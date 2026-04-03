@@ -1,0 +1,31 @@
+# Dependencies
+deps/
+*.a
+*.o
+*.dylib
+
+# QE source (downloaded locally)
+qe-*/
+quantum-espresso-*/
+
+# Build artifacts
+build/
+*.mod
+*.x
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*~
+.vscode/
+
+# Test outputs
+test-results/
+*.out
+*.log
+
+# Temporary files
+tmp/
+temp/
