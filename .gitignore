@@ -15,11 +15,18 @@ build/
 
 # macOS
 .DS_Store
+._*
 
 # Editor
 *.swp
+*.swo
 *~
+*.bak
 .vscode/
+
+# Claude Code
+.claude/
+CLAUDE.md
 
 # Test outputs
 test-results/

@@ -435,7 +435,7 @@ For the merge to succeed, apple-bottom itself needs:
 | Si64 benchmark | `~/qe-test/benchmark/si64.in` |
 | Integration test | `~/Dev/arm/metal-algos/tests/test_qe_integration.sh` |
 | V&V report | `~/Dev/arm/metal-algos/docs/vv/VV_REPORT.md` |
-| Existing merge plan | `~/Dev/arm/metal-algos/.claude/commands/qe-75-merge.md` |
+| Existing merge plan | See project documentation |
 
 ## Quick Reference: Validation Commands
 
