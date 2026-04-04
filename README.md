@@ -58,8 +58,8 @@ Quantum ESPRESSO
 
 ```bash
 # Clone the repository
-git clone https://github.com/grantdh/Espressivo.git
-cd Espressivo
+git clone https://github.com/grantdh/Quantum-Espressivo.git
+cd Quantum-Espressivo
 
 # Set up apple-bottom dependency
 ./scripts/setup-apple-bottom.sh
