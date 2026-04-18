@@ -2,13 +2,19 @@
 # build-qe-metal.sh — Clone QE 7.5 developer branch, patch for apple-bottom, build
 #
 # Usage:
-#   ./scripts/build-qe-metal.sh [--baseline-only] [--skip-clone]
+#   ./scripts/build-qe-metal.sh [--skip-clone]
 #
-# This script:
-# 1. Clones QE 7.5 from GitLab (developer branch)
-# 2. Builds a CPU-only baseline
-# 3. Patches cegterg.f90 for apple-bottom GPU acceleration
-# 4. Builds the Metal-accelerated version
+# Single responsibility: produces deps/qe-7.5/build-metal/bin/pw.x with
+# apple-bottom DD-BLAS linked. Patches cegterg.f90 to route ZGEMM/DGEMM
+# calls through ab_zgemm_/ab_dgemm_.
+#
+# Sibling scripts (run independently in any order):
+#   build-qe-accelerate.sh -> deps/qe-7.5/build-baseline/bin/pw.x  (AMX)
+#   build-qe-openblas.sh   -> deps/qe-7.5/build-openblas/bin/pw.x  (OpenBLAS)
+#
+# This script does NOT build the Accelerate baseline. The 4-way benchmark
+# campaign (benchmark-paper.sh) consumes both build-baseline/ and build-metal/;
+# the user is expected to run build-qe-accelerate.sh separately.
 
 set -e
 
@@ -19,11 +25,9 @@ export APPLE_BOTTOM_DIR="${APPLE_BOTTOM_DIR:-$ESPRESSIVO_ROOT/deps/apple-bottom}
 NPROCS=$(sysctl -n hw.logicalcpu)
 
 # Parse flags
-BASELINE_ONLY=false
 SKIP_CLONE=false
 for arg in "$@"; do
     case $arg in
-        --baseline-only) BASELINE_ONLY=true ;;
         --skip-clone) SKIP_CLONE=true ;;
     esac
 done
@@ -65,28 +69,13 @@ fi
 
 cd "$QE_DIR"
 
-# Step 2: Build CPU-only baseline
-echo ""
-echo "--- Building CPU-only baseline ---"
-if [ -d "build-baseline" ]; then
-    echo "Baseline build exists, skipping. Remove build-baseline/ to rebuild."
-else
-    mkdir build-baseline && cd build-baseline
-    cmake .. \
-        -DCMAKE_Fortran_COMPILER=gfortran \
-        -DCMAKE_C_COMPILER=gcc-15 \
-        -DBLA_VENDOR=Apple \
-        -DQE_ENABLE_OPENMP=ON \
-        -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5
-    echo "Building pw.x (baseline)..."
-    make -j"$NPROCS" pw 2>&1 | tail -3
-    echo "Baseline build complete: $(pwd)/bin/pw.x"
-    cd "$QE_DIR"
-fi
-
-if [ "$BASELINE_ONLY" = true ]; then
-    echo "Baseline-only mode. Done."
-    exit 0
+# Step 2: Sibling-build advisory (informational, non-fatal)
+if [ ! -f "$QE_DIR/build-baseline/bin/pw.x" ]; then
+    echo ""
+    echo "NOTE: Accelerate/AMX baseline (build-baseline/bin/pw.x) is not built."
+    echo "      For the 4-way benchmark campaign, run build-qe-accelerate.sh"
+    echo "      before invoking benchmark-paper.sh. Continuing with Metal build."
+    echo ""
 fi
 
 # Step 3: Create Metal-accelerated build
@@ -241,9 +230,7 @@ fi
 
 echo ""
 echo "============================================"
-echo "Build complete!"
-echo "  Baseline: $QE_DIR/build-baseline/bin/pw.x"
-echo "  Metal:    $QE_DIR/build-metal/bin/pw.x"
+echo "Metal build complete: $QE_DIR/build-metal/bin/pw.x"
 echo "============================================"
 echo ""
-echo "Next: run validation with ./scripts/validate.sh"
+echo "Next: ./scripts/validate.sh (requires build-baseline/ from build-qe-accelerate.sh)"
