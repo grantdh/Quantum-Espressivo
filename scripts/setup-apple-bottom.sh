@@ -41,6 +41,10 @@ make -j$(sysctl -n hw.logicalcpu)
 echo "Running apple-bottom tests..."
 make test
 
+# Install library, headers, and pkg-config to a standard layout
+echo "Installing apple-bottom..."
+make install PREFIX="$APPLE_BOTTOM_DIR"
+
 # Create environment setup script
 cat > "$ESPRESSIVO_ROOT/env.sh" << 'EOF'
 #!/bin/bash
