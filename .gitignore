@@ -37,3 +37,10 @@ test-results/
 tmp/
 temp/
 results/
+
+# Phase 2D benchmark scratch (QE working files - NOT for commit)
+results/*/tmp/
+results/*/*.save
+results/*/*.xml
+results/**/wfc*.dat
+results/**/charge-density.dat
