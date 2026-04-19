@@ -165,18 +165,18 @@ run_config() {
 
         export OMP_NUM_THREADS=4
 
-        # Profile file for GPU configs
-        local profile_file="$run_dir/ab_profile.log"
+        # Profile file for GPU configs (apple-bottom v1.3.x JSON format)
+        local profile_file="$run_dir/ab_profile.json"
 
         echo "    Run $run/$NUM_RUNS..."
         local start_time=$(python3 -c "import time; print(time.time())")
 
         # Execute with optional env override
         if [ -n "$env_override" ]; then
-            env AB_PROFILE_FILE="$profile_file" $env_override \
+            env AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
                 "$pw_binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
         else
-            env AB_PROFILE_FILE="$profile_file" \
+            env AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
                 "$pw_binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
         fi
 
@@ -191,8 +191,8 @@ run_config() {
         local gpu_calls="N/A"
         local total_calls="N/A"
         if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-            gpu_calls=$(grep " 1$" "$profile_file" | wc -l | tr -d ' ')
-            local cpu_calls=$(grep " 0$" "$profile_file" | wc -l | tr -d ' ')
+            gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
+            local cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
             total_calls=$((gpu_calls + cpu_calls))
         fi
 

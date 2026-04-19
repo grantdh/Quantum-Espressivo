@@ -133,7 +133,8 @@ for dir in "$PSEUDO_DIR" "$INPUT_DIR"; do
     done
 done
 
-export AB_PROFILE_FILE="$WORK_DIR/ab_profile.log"
+export AB_PROFILE=1
+export AB_PROFILE_JSON="$WORK_DIR/ab_profile.json"
 
 echo "Starting Metal run..."
 START_TIME=$(python3 -c "import time; print(time.time())")
@@ -144,10 +145,10 @@ METAL_WALL=$(python3 -c "print(f'{$END_TIME - $START_TIME:.1f}')")
 METAL_ENERGY=$(grep '!' metal.out | tail -1 | awk '{print $5}')
 METAL_SCF=$(grep 'convergence has been achieved' metal.out | awk '{print $6}' | head -1)
 
-# Parse profiling data
-if [ -f "$WORK_DIR/ab_profile.log" ]; then
-    GPU_CALLS=$(grep " 1$" "$WORK_DIR/ab_profile.log" | wc -l | tr -d ' ')
-    CPU_CALLS=$(grep " 0$" "$WORK_DIR/ab_profile.log" | wc -l | tr -d ' ')
+# Parse profiling data (apple-bottom v1.3.x JSON format)
+if [ -f "$WORK_DIR/ab_profile.json" ]; then
+    GPU_CALLS=$(python3 -c "import json; d=json.load(open('$WORK_DIR/ab_profile.json')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
+    CPU_CALLS=$(python3 -c "import json; d=json.load(open('$WORK_DIR/ab_profile.json')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
     TOTAL_CALLS=$((GPU_CALLS + CPU_CALLS))
 else
     GPU_CALLS="N/A"
@@ -208,4 +209,4 @@ echo ""
 echo "Report saved to: $REPORT"
 echo "Detailed output: $RESULTS_DIR/baseline_run/baseline.out"
 echo "                 $RESULTS_DIR/metal_run/metal.out"
-echo "Profiling log:   $RESULTS_DIR/metal_run/ab_profile.log"
+echo "Profiling JSON:  $RESULTS_DIR/metal_run/ab_profile.json"

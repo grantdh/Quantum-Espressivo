@@ -297,7 +297,7 @@ run_one() {
     fi
     local run_omp_threads=$(get_omp_threads "$mpi_nprocs")
 
-    local profile_file="$run_dir/ab_profile.log"
+    local profile_file="$run_dir/ab_profile.json"
 
     # Log run configuration
     echo "mpi_prefix=$mpi_prefix" > "$run_dir/run_config.txt"
@@ -311,12 +311,12 @@ run_one() {
     if [ -n "$env_override" ]; then
         env OMP_NUM_THREADS="$run_omp_threads" \
             ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE_FILE="$profile_file" $env_override \
+            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
             $mpi_prefix "$binary" < "$input_file" > "$run_dir/pw.out" 2>&1 || true
     else
         env OMP_NUM_THREADS="$run_omp_threads" \
             ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE_FILE="$profile_file" \
+            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
             $mpi_prefix "$binary" < "$input_file" > "$run_dir/pw.out" 2>&1 || true
     fi
 
@@ -333,8 +333,8 @@ run_one() {
     local gpu_calls="0"
     local total_calls="0"
     if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-        gpu_calls=$(grep " 1$" "$profile_file" | wc -l | tr -d ' ')
-        local cpu_calls=$(grep " 0$" "$profile_file" | wc -l | tr -d ' ')
+        gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
+        local cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
         total_calls=$((gpu_calls + cpu_calls))
     fi
 

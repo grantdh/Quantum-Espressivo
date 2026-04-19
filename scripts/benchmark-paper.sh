@@ -272,7 +272,7 @@ for entry in "${SCHEDULE[@]}"; do
         done
     done
 
-    profile_file="$run_dir/ab_profile.log"
+    profile_file="$run_dir/ab_profile.json"
 
     # Capture pre-run thermal state (macOS)
     # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
@@ -282,12 +282,12 @@ for entry in "${SCHEDULE[@]}"; do
     if [ -n "$env_override" ]; then
         env OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" \
             ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE_FILE="$profile_file" $env_override \
+            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
             $MPI_PREFIX "$binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
     else
         env OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" \
             ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE_FILE="$profile_file" \
+            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
             $MPI_PREFIX "$binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
     fi
 
@@ -304,8 +304,8 @@ for entry in "${SCHEDULE[@]}"; do
     gpu_calls="0"
     total_calls="0"
     if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-        gpu_calls=$(grep " 1$" "$profile_file" | wc -l | tr -d ' ')
-        cpu_calls=$(grep " 0$" "$profile_file" | wc -l | tr -d ' ')
+        gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
+        cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
         total_calls=$((gpu_calls + cpu_calls))
     fi
 
