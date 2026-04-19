@@ -275,9 +275,7 @@ for entry in "${SCHEDULE[@]}"; do
     profile_file="$run_dir/ab_profile.log"
 
     # Capture pre-run thermal state (macOS)
-    if command -v pmset &>/dev/null; then
-        pmset -g thermlog > "$run_dir/thermal_pre.txt" 2>/dev/null || true
-    fi
+    # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     start_time=$(python3 -c "import time; print(time.time())")
 
@@ -297,9 +295,7 @@ for entry in "${SCHEDULE[@]}"; do
     wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
 
     # Capture post-run thermal state
-    if command -v pmset &>/dev/null; then
-        pmset -g thermlog > "$run_dir/thermal_post.txt" 2>/dev/null || true
-    fi
+    # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     # Extract results
     energy=$(grep '!' "$run_dir/pw.out" | tail -1 | awk '{print $5}')
