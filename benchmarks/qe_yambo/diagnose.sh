@@ -58,7 +58,7 @@ echo ""
 
 echo "---- AB_MODE runtime smoke test ----"
 # A tiny GEMM through dlopen to confirm AB_MODE is picked up
-AB_LIB="${AB_LIB:-${HOME}/Dev/arm/metal-algos/build/libapplebottom.dylib}"
+AB_LIB="${AB_LIB:-${HOME}/Dev/Claude/apple-bottom/build/libapplebottom.dylib}"
 if [[ -f "${AB_LIB}" ]]; then
     echo "  apple-bottom dylib: ${AB_LIB}"
     otool -D "${AB_LIB}" 2>/dev/null | tail -1

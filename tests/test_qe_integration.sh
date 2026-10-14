@@ -65,7 +65,7 @@ echo ""
 # ---------------------------------------------
 echo "--- Step 0: Symlink ---"
 SYMLINK_TARGET=$(readlink ~/apple-bottom 2>/dev/null || echo "NOT_A_SYMLINK")
-check "~/apple-bottom symlink exists" "readlink ~/apple-bottom" "metal-algos"
+check "~/apple-bottom symlink exists" "readlink ~/apple-bottom" "apple-bottom"
 
 # ---------------------------------------------
 # Step 1: Library symbols

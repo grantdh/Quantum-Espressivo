@@ -2,7 +2,7 @@
 # Override any of these via environment before invoking the scripts.
 
 # --- apple-bottom dylib ----------------------------------------------------
-: "${AB_ROOT:=$HOME/Dev/arm/metal-algos}"
+: "${AB_ROOT:=$HOME/Dev/Claude/apple-bottom}"
 : "${AB_LIB:=${AB_ROOT}/build/libapplebottom.dylib}"
 : "${AB_INCLUDE:=${AB_ROOT}/include}"
 

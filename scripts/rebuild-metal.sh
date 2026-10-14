@@ -46,7 +46,7 @@ done
 # Auto-detect dev repo
 if [ -z "$AB_DEV" ]; then
     for path in \
-        "$HOME/Dev/metal-algos" \
+        "$HOME/Dev/Claude/apple-bottom" \
         "$HOME/dev/metal-algos" \
         "$HOME/metal-algos" \
         "$HOME/Dev/apple-bottom"; do
