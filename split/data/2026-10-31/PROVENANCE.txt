@@ -1,0 +1,50 @@
+QE pw.x, with and without qe_split.o; written 2026-10-31 01:32:48 EDT on Apple M2 Max, macOS 27.0.1 (26A434)
+tree:    $QE_DIR
+commit:  b6615c50b360515ab52a376df5e5c76be285fc2e 2026-10-30T08:54:07Z Merge branch 'fix-read_ns-bcast' into 'develop'
+version: 8.0dev
+status:   M external/d3q 
+submodules:
+   6e5f97816af439702196c248ec2ad0092c561b89 external/d3q (v1.1.10-QE7.0-156-g6e5f978)
+   a6b89ef77b1ceda48e967921f1f5488d2df9226d external/devxlib (0.1.0)
+   3453648e6837658b747b895bb7bef4b1ed2eac40 external/fox (4.1.2-QE)
+   12d825396fcef1e0a1b27be9f119f9e554621e55 external/lapack (v3.7.0-492-g12d825396)
+   89a3cc199c0a200c9f0f688c3229ef6b9a8d63bd external/mbd (0.13.0-2-g89a3cc1)
+   f72ab25fa4ea755c1b4b230ae8074b47d5509c70 external/pw2qmcpack (f72ab25)
+   717e55c36f28c512d232321adb10d5a66d3e1072 external/qe-gipaw (7.4.1)
+   971c8b64bfe703c747a52655e1d59936597fe8ea external/wannier90 (971c8b64)
+toolchain: fftw 3.3.10_3;gcc 15.2.0_1;open-mpi 5.0.9;openblas 0.3.31_1;scalapack 2.2.2;
+library: <frozen>/755a46613bf2/libapplebottom.dylib sha256 755a46613bf25b34c32dad6217d07730b17c21261ffbaf314d6d6f3165847122
+header:  <campaign>/build/include/apple_bottom.h sha256 89ff240a9b1f33e4292e410eaf115534de04e2a868b14ee8f4c8a09d3b298db7
+make.inc: configure output make.inc.configure; make.inc.cpu adds the release check's edits and
+  apple-bottom; make.inc.split adds qe_split.o in front of BLAS_LIBS. diff make.inc.cpu make.inc.split:
+    209a210,212
+    > # qe_split.o defines dgemm_ and zgemm_ (an object file's definitions take precedence over a library's)
+    > SPLIT_OBJ   = $OUT/bin/qe_split.o
+    > BLAS_LIBS   := $(SPLIT_OBJ) $(BLAS_LIBS)
+  FFLAGS: -O3 -g -fallow-argument-mismatch -fopenmp; CFLAGS: -O3 $(DFLAGS) $(IFLAGS) $(CUDA_CFLAGS)
+objects: one build (make pw -j8); pw.x.split relinks the same objects (objects-*.sha256 equal);
+  pw.x relinked with make.inc.cpu afterwards is identical to pw.x.cpu
+qe_split.o: 4b378ac00b4791d8a35abe1bf728e995d6b46b09031174ab18411e247a3957ca, from split/qe_split.c 33c3593dde7052d88d57f8a93d9f955520cf9b4967dfac76f013c9acb83c19a3
+pw.x.cpu: sha256 d3ace84fa8044303a01b64acff6678b8b078746d0625ef6f9cd72c869208436e, 10329928 bytes, D9E51AF2-03C6-3D3C-941D-6243E141A430
+  dgemm_/zgemm_: (undefined) external _dgemm_;(undefined) external _zgemm_;
+  libraries:     /opt/homebrew/opt/scalapack/lib/libscalapack.2.2.dylib @rpath/libapplebottom.dylib /opt/homebrew/opt/openblas/lib/libopenblas.0.dylib /opt/homebrew/opt/fftw/lib/libfftw3_omp.3.dylib /opt/homebrew/opt/fftw/lib/libfftw3.3.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempif08.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempi_ignore_tkr.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_mpifh.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi.40.dylib 
+  LC_RPATH:      <frozen>/755a46613bf2 @loader_path /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc/aarch64-apple-darwin25/15 /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current 
+pw.x.split: sha256 7499f88e8ccd4d870e0eb0eb73665c2bda446bece7813d4c8b1d566ec6c9ac87, 10332120 bytes, 12E24791-74DB-3D0C-9B96-EF169EF694F7
+  dgemm_/zgemm_: (__TEXT,__text) external _dgemm_;(__TEXT,__text) external _zgemm_;
+  libraries:     /opt/homebrew/opt/scalapack/lib/libscalapack.2.2.dylib @rpath/libapplebottom.dylib /opt/homebrew/opt/openblas/lib/libopenblas.0.dylib /opt/homebrew/opt/fftw/lib/libfftw3_omp.3.dylib /opt/homebrew/opt/fftw/lib/libfftw3.3.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempif08.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempi_ignore_tkr.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_mpifh.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi.40.dylib /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate 
+  LC_RPATH:      <frozen>/755a46613bf2 @loader_path /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc/aarch64-apple-darwin25/15 /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current 
+pw.x.fix: sha256 8ea75d5cc5aec97d18e4e6be5b43b919bea3ae778a3a8068957dc955ee0af506, 10272160 bytes, 12E24791-74DB-3D0C-9B96-EF169EF694F7
+  dgemm_/zgemm_: (__TEXT,__text) external _dgemm_;(__TEXT,__text) external _zgemm_;
+  libraries:     /opt/homebrew/opt/scalapack/lib/libscalapack.2.2.dylib @rpath/libapplebottom.dylib /opt/homebrew/opt/openblas/lib/libopenblas.0.dylib /opt/homebrew/opt/fftw/lib/libfftw3_omp.3.dylib /opt/homebrew/opt/fftw/lib/libfftw3.3.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempif08.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_usempi_ignore_tkr.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi_mpifh.40.dylib /opt/homebrew/opt/open-mpi/lib/libmpi.40.dylib /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate 
+  LC_RPATH:      <frozen>/edd6aa2db786 @loader_path /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc/aarch64-apple-darwin25/15 /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current/gcc /opt/homebrew/Cellar/gcc/15.2.0_1/lib/gcc/current 
+pw.x.fix: pw.x.split with LC_RPATH <frozen>/755a46613bf2 -> <frozen>/edd6aa2db786, ad-hoc re-signed; library sha256 edd6aa2db786e2c5892a91edde0a2b84011127d5542f5c5d1189a0e7848312ac
+
+== 2026-10-31 11:35 EDT: the second library changed before any run with it
+apple-bottom v1.5.0 was tagged at 2026-10-31 11:01 EDT (tag commit 4530fd6, PR #16 merged). Its library sources
+(src/) are 8ebe73c's; its public header differs from 8ebe73c's only in the version macros (1.4.0 -> 1.5.0) and
+comments, its Makefile only in a benchmark target. The frozen 8ebe73c build 3ead2d56bc84 replaces edd6aa2db786
+(351d56c, the fix as first committed) as the second library. The one calibration run already started with
+edd6aa2db786 (calib-8x1, A, fix-s0 r1) was killed after 27 s and has no results row.
+pw.x.fix-351d56c: the previous pw.x.fix (sha256 8ea75d5cc5aec97d18e4e6be5b43b919bea3ae778a3a8068957dc955ee0af506), kept, not used.
+pw.x.fix: sha256 871ec24a67d27ea05210fcf331bdf091980fb13bfa40e280396b14019d236b94, 10272160 bytes, 12E24791-74DB-3D0C-9B96-EF169EF694F7
+pw.x.fix: pw.x.split with LC_RPATH <frozen>/755a46613bf2 -> <frozen>/3ead2d56bc84, ad-hoc re-signed; library sha256 3ead2d56bc84485486447d764ad6e3ee2afaf81fa71b0c229267dc5626dbe08b

@@ -1,0 +1,1 @@
+dRK.t0=0.55 zRK.t0=0.48 zRK.t1=0.51 zRK.t2=0.51 zUM.k0=0.39 zUM.k1=0.44 zUM.k2=0.54 zUN.k1=0.45 zUN.k2=0.47

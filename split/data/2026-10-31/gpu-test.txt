@@ -1,0 +1,83 @@
+# <frozen>/755a46613bf2
+QE_SPLIT[41711] qe_split pid=41711 rank=-1 build="apple-bottom 1.4.0 (415cb5d4d888)" split=1 dgemm=1 gpu=tail min_gf=0.01 min_m=2048 min_k=2048 un_min_n=256 f=""
+QE_SPLIT[41711] zUN.k1 f=0.510 calls=2 split=2 gpu_on_cpu=0 gf=7.61 gf_split=7.61 gf_gpu=3.90 wall_s=0.0780 split_wall_s=0.0780 cpu_s=0.0093 gpu_s=0.0779 wait_s=0.0687 kadd_s=0.0000 r_cpu=398.0 r_gpu=50.1 f_bal=0.112
+QE_SPLIT[41711] zUN.k2 f=0.510 calls=1 split=1 gpu_on_cpu=0 gf=5.53 gf_split=5.53 gf_gpu=3.07 wall_s=0.0199 split_wall_s=0.0199 cpu_s=0.0055 gpu_s=0.0199 wait_s=0.0144 kadd_s=0.0000 r_cpu=443.9 r_gpu=154.3 f_bal=0.258
+QE_SPLIT[41711] zUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.48 gf_split=0.48 gf_gpu=0.24 wall_s=0.0025 split_wall_s=0.0025 cpu_s=0.0009 gpu_s=0.0025 wait_s=0.0016 kadd_s=0.0000 r_cpu=254.3 r_gpu=96.7 f_bal=0.275
+QE_SPLIT[41711] zUM.k1 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=1.06 gf_split=1.06 gf_gpu=0.54 wall_s=0.0035 split_wall_s=0.0035 cpu_s=0.0020 gpu_s=0.0035 wait_s=0.0015 kadd_s=0.0000 r_cpu=257.6 r_gpu=154.2 f_bal=0.374
+QE_SPLIT[41711] zRK.t0 f=0.550 calls=2 split=2 gpu_on_cpu=0 gf=1.90 gf_split=1.90 gf_gpu=1.04 wall_s=0.0087 split_wall_s=0.0087 cpu_s=0.0026 gpu_s=0.0086 wait_s=0.0060 kadd_s=0.0001 r_cpu=335.2 r_gpu=121.4 f_bal=0.266
+QE_SPLIT[41711] zRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=2.88 gf_split=2.88 gf_gpu=1.60 wall_s=0.0084 split_wall_s=0.0084 cpu_s=0.0033 gpu_s=0.0083 wait_s=0.0050 kadd_s=0.0001 r_cpu=393.6 r_gpu=192.8 f_bal=0.329
+QE_SPLIT[41711] dUN.k1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=1.15 gf_split=1.15 gf_gpu=0.69 wall_s=0.0042 split_wall_s=0.0042 cpu_s=0.0021 gpu_s=0.0042 wait_s=0.0021 kadd_s=0.0000 r_cpu=219.7 r_gpu=165.7 f_bal=0.430
+QE_SPLIT[41711] dUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.12 gf_split=0.12 gf_gpu=0.06 wall_s=0.0012 split_wall_s=0.0012 cpu_s=0.0003 gpu_s=0.0012 wait_s=0.0009 kadd_s=0.0000 r_cpu=184.6 r_gpu=49.9 f_bal=0.213
+QE_SPLIT[41711] dRK.t0 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.16 gf_split=0.16 gf_gpu=0.09 wall_s=0.0017 split_wall_s=0.0017 cpu_s=0.0003 gpu_s=0.0017 wait_s=0.0014 kadd_s=0.0000 r_cpu=211.3 r_gpu=54.4 f_bal=0.205
+QE_SPLIT[41711] dRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.72 gf_split=0.72 gf_gpu=0.40 wall_s=0.0033 split_wall_s=0.0033 cpu_s=0.0012 gpu_s=0.0032 wait_s=0.0020 kadd_s=0.0000 r_cpu=261.6 r_gpu=124.3 f_bal=0.322
+QE_SPLIT[41711] zpass calls=2 gf=4.32 wall_s=0.0112
+zUN.k1 beta=1        NN M=3000 N=320 K=600  max error 2.834 u2  elements differing from cblas 479998 of 960000  padding touched 0  ok
+zUN.k2 beta=0        NN M=3000 N=288 K=800  max error 3.053 u2  elements differing from cblas 479994 of 864000  padding touched 0  ok
+zUN lower            nn M=2500 N=300 K=500  max error 3.241 u2  elements differing from cblas 399994 of 750000  padding touched 0  ok
+zUM.k0 beta=1        NN M=3000 N=100 K=200  max error 2.741 u2  elements differing from cblas 150395 of 300000  padding touched 0  ok
+zUM.k1 alpha,beta    NN M=2600 N=160 K=320  max error 2.952 u2  elements differing from cblas 209917 of 416000  padding touched 0  ok
+zRK.t1 beta=0        CN M=300 N=400 K=3000  max error 1.515 u2  elements differing from cblas 119999 of 120000  padding touched 0  ok
+zRK.t0 beta=1        CN M=160 N=160 K=3200  max error 1.491 u2  elements differing from cblas 25600 of 25600  padding touched 0  ok
+zRK lower alpha      cn M=200 N=300 K=2600  max error 1.444 u2  elements differing from cblas 60000 of 60000  padding touched 0  ok
+z pass small         NN M=100 N=50 K=40  max error 0.000 u2  elements differing from cblas 0 of 5000  padding touched 0  ok
+z pass N,C           NC M=3000 N=300 K=600  max error 0.000 u2  elements differing from cblas 0 of 900000  padding touched 0  ok
+dUN.k1               NN M=3000 N=320 K=600  max error 3.636 u2  elements differing from cblas 906409 of 960000  padding touched 0  ok
+dUM.k0               NN M=3000 N=100 K=200  max error 2.592 u2  elements differing from cblas 149686 of 300000  padding touched 0  ok
+dRK.t1 T             TN M=300 N=400 K=3000  max error 1.916 u2  elements differing from cblas 119613 of 120000  padding touched 0  ok
+dRK.t0 C             CN M=160 N=160 K=3200  max error 1.948 u2  elements differing from cblas 25536 of 25600  padding touched 0  ok
+0 of 14 cases failed
+QE_SPLIT[41719] qe_split pid=41719 rank=-1 build="apple-bottom 1.4.0 (415cb5d4d888)" split=1 dgemm=1 gpu=head min_gf=0.01 min_m=2048 min_k=2048 un_min_n=256 f=""
+QE_SPLIT[41719] zUN.k1 f=0.510 calls=2 split=2 gpu_on_cpu=0 gf=7.61 gf_split=7.61 gf_gpu=3.90 wall_s=0.0744 split_wall_s=0.0744 cpu_s=0.0096 gpu_s=0.0744 wait_s=0.0649 kadd_s=0.0000 r_cpu=387.8 r_gpu=52.5 f_bal=0.119
+QE_SPLIT[41719] zUN.k2 f=0.510 calls=1 split=1 gpu_on_cpu=0 gf=5.53 gf_split=5.53 gf_gpu=3.07 wall_s=0.0143 split_wall_s=0.0143 cpu_s=0.0060 gpu_s=0.0143 wait_s=0.0083 kadd_s=0.0000 r_cpu=410.3 r_gpu=215.2 f_bal=0.344
+QE_SPLIT[41719] zUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.48 gf_split=0.48 gf_gpu=0.24 wall_s=0.0021 split_wall_s=0.0021 cpu_s=0.0010 gpu_s=0.0021 wait_s=0.0011 kadd_s=0.0000 r_cpu=233.7 r_gpu=112.9 f_bal=0.326
+QE_SPLIT[41719] zUM.k1 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=1.06 gf_split=1.06 gf_gpu=0.54 wall_s=0.0038 split_wall_s=0.0038 cpu_s=0.0019 gpu_s=0.0037 wait_s=0.0018 kadd_s=0.0000 r_cpu=272.0 r_gpu=143.4 f_bal=0.345
+QE_SPLIT[41719] zRK.t0 f=0.550 calls=2 split=2 gpu_on_cpu=0 gf=1.90 gf_split=1.90 gf_gpu=1.04 wall_s=0.0057 split_wall_s=0.0057 cpu_s=0.0025 gpu_s=0.0056 wait_s=0.0032 kadd_s=0.0001 r_cpu=347.1 r_gpu=185.1 f_bal=0.348
+QE_SPLIT[41719] zRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=2.88 gf_split=2.88 gf_gpu=1.60 wall_s=0.0112 split_wall_s=0.0112 cpu_s=0.0033 gpu_s=0.0111 wait_s=0.0078 kadd_s=0.0001 r_cpu=383.4 r_gpu=143.5 f_bal=0.272
+QE_SPLIT[41719] dUN.k1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=1.15 gf_split=1.15 gf_gpu=0.69 wall_s=0.0040 split_wall_s=0.0040 cpu_s=0.0015 gpu_s=0.0040 wait_s=0.0024 kadd_s=0.0000 r_cpu=298.1 r_gpu=174.8 f_bal=0.370
+QE_SPLIT[41719] dUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.12 gf_split=0.12 gf_gpu=0.06 wall_s=0.0015 split_wall_s=0.0015 cpu_s=0.0003 gpu_s=0.0015 wait_s=0.0012 kadd_s=0.0000 r_cpu=196.4 r_gpu=39.6 f_bal=0.168
+QE_SPLIT[41719] dRK.t0 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.16 gf_split=0.16 gf_gpu=0.09 wall_s=0.0021 split_wall_s=0.0021 cpu_s=0.0003 gpu_s=0.0021 wait_s=0.0018 kadd_s=0.0000 r_cpu=208.3 r_gpu=43.3 f_bal=0.172
+QE_SPLIT[41719] dRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.72 gf_split=0.72 gf_gpu=0.40 wall_s=0.0041 split_wall_s=0.0041 cpu_s=0.0011 gpu_s=0.0039 wait_s=0.0028 kadd_s=0.0002 r_cpu=295.9 r_gpu=101.9 f_bal=0.256
+QE_SPLIT[41719] zpass calls=2 gf=4.32 wall_s=0.0094
+zUN.k1 beta=1        NN M=3000 N=320 K=600  max error 3.583 u2  elements differing from cblas 479996 of 960000  padding touched 0  ok
+zUN.k2 beta=0        NN M=3000 N=288 K=800  max error 2.903 u2  elements differing from cblas 479996 of 864000  padding touched 0  ok
+zUN lower            nn M=2500 N=300 K=500  max error 3.285 u2  elements differing from cblas 399994 of 750000  padding touched 0  ok
+zUM.k0 beta=1        NN M=3000 N=100 K=200  max error 3.205 u2  elements differing from cblas 150395 of 300000  padding touched 0  ok
+zUM.k1 alpha,beta    NN M=2600 N=160 K=320  max error 2.862 u2  elements differing from cblas 209917 of 416000  padding touched 0  ok
+zRK.t1 beta=0        CN M=300 N=400 K=3000  max error 1.661 u2  elements differing from cblas 120000 of 120000  padding touched 0  ok
+zRK.t0 beta=1        CN M=160 N=160 K=3200  max error 1.147 u2  elements differing from cblas 25600 of 25600  padding touched 0  ok
+zRK lower alpha      cn M=200 N=300 K=2600  max error 1.430 u2  elements differing from cblas 60000 of 60000  padding touched 0  ok
+z pass small         NN M=100 N=50 K=40  max error 0.000 u2  elements differing from cblas 0 of 5000  padding touched 0  ok
+z pass N,C           NC M=3000 N=300 K=600  max error 0.000 u2  elements differing from cblas 0 of 900000  padding touched 0  ok
+dUN.k1               NN M=3000 N=320 K=600  max error 3.341 u2  elements differing from cblas 906021 of 960000  padding touched 0  ok
+dUM.k0               NN M=3000 N=100 K=200  max error 3.494 u2  elements differing from cblas 149678 of 300000  padding touched 0  ok
+dRK.t1 T             TN M=300 N=400 K=3000  max error 1.535 u2  elements differing from cblas 119625 of 120000  padding touched 0  ok
+dRK.t0 C             CN M=160 N=160 K=3200  max error 2.020 u2  elements differing from cblas 25537 of 25600  padding touched 0  ok
+0 of 14 cases failed
+# <frozen>/3ead2d56bc84
+QE_SPLIT[41720] qe_split pid=41720 rank=-1 build="apple-bottom 1.4.0 (8ebe73ccf822-dirty)" split=1 dgemm=1 gpu=tail min_gf=0.01 min_m=2048 min_k=2048 un_min_n=256 f=""
+QE_SPLIT[41720] zUN.k1 f=0.510 calls=2 split=2 gpu_on_cpu=0 gf=7.61 gf_split=7.61 gf_gpu=3.90 wall_s=0.2956 split_wall_s=0.2956 cpu_s=0.0088 gpu_s=0.2955 wait_s=0.2867 kadd_s=0.0000 r_cpu=418.7 r_gpu=13.2 f_bal=0.031
+QE_SPLIT[41720] zUN.k2 f=0.510 calls=1 split=1 gpu_on_cpu=0 gf=5.53 gf_split=5.53 gf_gpu=3.07 wall_s=0.0131 split_wall_s=0.0131 cpu_s=0.0062 gpu_s=0.0131 wait_s=0.0070 kadd_s=0.0000 r_cpu=399.4 r_gpu=234.3 f_bal=0.370
+QE_SPLIT[41720] zUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.48 gf_split=0.48 gf_gpu=0.24 wall_s=0.0024 split_wall_s=0.0024 cpu_s=0.0008 gpu_s=0.0024 wait_s=0.0016 kadd_s=0.0000 r_cpu=295.3 r_gpu=100.7 f_bal=0.254
+QE_SPLIT[41720] zUM.k1 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=1.06 gf_split=1.06 gf_gpu=0.54 wall_s=0.0039 split_wall_s=0.0039 cpu_s=0.0022 gpu_s=0.0039 wait_s=0.0017 kadd_s=0.0000 r_cpu=241.8 r_gpu=138.3 f_bal=0.364
+QE_SPLIT[41720] zRK.t0 f=0.550 calls=2 split=2 gpu_on_cpu=0 gf=1.90 gf_split=1.90 gf_gpu=1.04 wall_s=0.0095 split_wall_s=0.0095 cpu_s=0.0025 gpu_s=0.0094 wait_s=0.0069 kadd_s=0.0001 r_cpu=344.5 r_gpu=111.1 f_bal=0.244
+QE_SPLIT[41720] zRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=2.88 gf_split=2.88 gf_gpu=1.60 wall_s=0.0076 split_wall_s=0.0076 cpu_s=0.0032 gpu_s=0.0076 wait_s=0.0044 kadd_s=0.0001 r_cpu=403.8 r_gpu=211.6 f_bal=0.344
+QE_SPLIT[41720] dUN.k1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=1.15 gf_split=1.15 gf_gpu=0.69 wall_s=0.0064 split_wall_s=0.0064 cpu_s=0.0016 gpu_s=0.0063 wait_s=0.0047 kadd_s=0.0000 r_cpu=281.7 r_gpu=109.1 f_bal=0.279
+QE_SPLIT[41720] dUM.k0 f=0.500 calls=1 split=1 gpu_on_cpu=0 gf=0.12 gf_split=0.12 gf_gpu=0.06 wall_s=0.0015 split_wall_s=0.0015 cpu_s=0.0003 gpu_s=0.0015 wait_s=0.0012 kadd_s=0.0000 r_cpu=221.4 r_gpu=41.4 f_bal=0.158
+QE_SPLIT[41720] dRK.t0 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.16 gf_split=0.16 gf_gpu=0.09 wall_s=0.0019 split_wall_s=0.0019 cpu_s=0.0004 gpu_s=0.0019 wait_s=0.0015 kadd_s=0.0000 r_cpu=169.9 r_gpu=47.6 f_bal=0.219
+QE_SPLIT[41720] dRK.t1 f=0.550 calls=1 split=1 gpu_on_cpu=0 gf=0.72 gf_split=0.72 gf_gpu=0.40 wall_s=0.0044 split_wall_s=0.0044 cpu_s=0.0013 gpu_s=0.0043 wait_s=0.0030 kadd_s=0.0000 r_cpu=239.4 r_gpu=92.2 f_bal=0.278
+QE_SPLIT[41720] zpass calls=2 gf=4.32 wall_s=0.0092
+zUN.k1 beta=1        NN M=3000 N=320 K=600  max error 2.834 u2  elements differing from cblas 479998 of 960000  padding touched 0  ok
+zUN.k2 beta=0        NN M=3000 N=288 K=800  max error 3.053 u2  elements differing from cblas 479994 of 864000  padding touched 0  ok
+zUN lower            nn M=2500 N=300 K=500  max error 3.241 u2  elements differing from cblas 399994 of 750000  padding touched 0  ok
+zUM.k0 beta=1        NN M=3000 N=100 K=200  max error 2.741 u2  elements differing from cblas 150395 of 300000  padding touched 0  ok
+zUM.k1 alpha,beta    NN M=2600 N=160 K=320  max error 2.952 u2  elements differing from cblas 209917 of 416000  padding touched 0  ok
+zRK.t1 beta=0        CN M=300 N=400 K=3000  max error 1.515 u2  elements differing from cblas 119999 of 120000  padding touched 0  ok
+zRK.t0 beta=1        CN M=160 N=160 K=3200  max error 1.491 u2  elements differing from cblas 25600 of 25600  padding touched 0  ok
+zRK lower alpha      cn M=200 N=300 K=2600  max error 1.444 u2  elements differing from cblas 60000 of 60000  padding touched 0  ok
+z pass small         NN M=100 N=50 K=40  max error 0.000 u2  elements differing from cblas 0 of 5000  padding touched 0  ok
+z pass N,C           NC M=3000 N=300 K=600  max error 0.000 u2  elements differing from cblas 0 of 900000  padding touched 0  ok
+dUN.k1               NN M=3000 N=320 K=600  max error 3.636 u2  elements differing from cblas 906409 of 960000  padding touched 0  ok
+dUM.k0               NN M=3000 N=100 K=200  max error 2.592 u2  elements differing from cblas 149686 of 300000  padding touched 0  ok
+dRK.t1 T             TN M=300 N=400 K=3000  max error 1.916 u2  elements differing from cblas 119613 of 120000  padding touched 0  ok
+dRK.t0 C             CN M=160 N=160 K=3200  max error 1.948 u2  elements differing from cblas 25536 of 25600  padding touched 0  ok
+0 of 14 cases failed

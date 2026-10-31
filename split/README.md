@@ -75,6 +75,7 @@ split shape against one cblas call: with `AB_MODE=cpu` for the split's arithmeti
 | `calibrate.py` | the next share per class, from the rates both engines reached in QE runs |
 | `campaign.sh` | the whole measurement: build, GPU test, calibration, timing, tables |
 | `analyze.py` | the tables: wall times, physics against the CPU runs, per-class statistics, where the GPU parts ran |
+| `data/2026-10-31/` | the measurement below: `analyze.py`'s tables (`tables-*.md`), the timing runs' rows of `results.csv` (`results-time.csv`), the calibrated shares (`shares-*.txt`), the build record (`PROVENANCE.txt`) and the GPU test (`gpu-test.txt`); local paths are replaced by the scripts' variable names or placeholders |
 
 ## Measurement plan
 
@@ -121,7 +122,10 @@ split shape against one cblas call: with `AB_MODE=cpu` for the split's arithmeti
 
 Measured on 2026-10-31 by `campaign.sh` from this directory at d5b4e41. All 28 calibration runs and 54
 timing runs ended normally, and none was redone. One more calibration run, with 351d56c, was stopped
-after 27 s when that library was replaced.
+after 27 s when that library was replaced. The files in `data/2026-10-31/` use `campaign.sh`'s
+configuration names (its header lists them): `split` is the split with 415cb5d, `fix` the split with
+1.5.0's library. The run directories (QE output, traces, logs) are not in the repository, so the
+tables cannot be regenerated from those files.
 
 ### Wall time
 
