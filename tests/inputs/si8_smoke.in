@@ -1,0 +1,32 @@
+! validate.sh's default input: 8-atom silicon in its simple cubic cell, LDA, with the
+! pseudopotential that ships with Quantum ESPRESSO (pseudo/Si.bhs). With 48 bands, the
+! Davidson ZGEMMs have every dimension above apple-bottom's AB_MIN_GPU_DIM (32), so
+! AB_MODE=gpu runs them on the GPU. One run takes seconds.
+&CONTROL
+    calculation = 'scf'
+    prefix      = 'si8'
+/
+&SYSTEM
+    ibrav     = 1
+    celldm(1) = 10.26
+    nat       = 8
+    ntyp      = 1
+    ecutwfc   = 20.0
+    nbnd      = 48
+/
+&ELECTRONS
+    conv_thr = 1.0d-9
+/
+ATOMIC_SPECIES
+  Si  28.0855  Si.bhs
+ATOMIC_POSITIONS {crystal}
+  Si  0.00  0.00  0.00
+  Si  0.00  0.50  0.50
+  Si  0.50  0.00  0.50
+  Si  0.50  0.50  0.00
+  Si  0.25  0.25  0.25
+  Si  0.25  0.75  0.75
+  Si  0.75  0.25  0.75
+  Si  0.75  0.75  0.25
+K_POINTS {automatic}
+  2 2 2  0 0 0

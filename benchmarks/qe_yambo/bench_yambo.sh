@@ -14,7 +14,7 @@
 #
 # Two stages per mode:
 #   B1: IP-RPA            — light ZGEMM, mostly dipoles/IO (baseline overhead)
-#   B2: GW-PPA (reduced)  — ZGEMM-dominated (where apple-bottom should shine)
+#   B2: GW-PPA (reduced)  — ZGEMM-dominated
 # We skip BSE: full GW+BSE is the "days" path per workflow notes, way more
 # than we need to prove dispatch routing.
 #
@@ -175,6 +175,7 @@ run_stage() {
 
     local TO
     TO="$(command -v gtimeout || command -v timeout || true)"
+    rm -f "${base}/ab_profile_${stage}".*   # a rerun's profiles replace the last run's
 
     echo "  [$(ts)] ${stage} | AB_MODE=${mode}"
     local start end wall rc=0
@@ -185,9 +186,9 @@ run_stage() {
         env -i HOME="$HOME" PATH="$PATH" \
             OMP_NUM_THREADS="${OMP}" \
             ${AB_EXTRA} \
-            AB_PROFILE_FILE="${base}/gemm_profile_${stage}.txt" \
             ${TO:+${TO} ${YAMBO_TIMEOUT}} \
-            mpirun -np "${NP}" "${YAMBO_BIN}" -F "$(basename "${inp}")" -J "${jlbl}" \
+            mpirun -np "${NP}" "${AB_WITH_PROFILE}" "${base}/ab_profile_${stage}" \
+                   "${YAMBO_BIN}" -F "$(basename "${inp}")" -J "${jlbl}" \
                    > "log_${stage}.txt" 2>&1
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
@@ -209,6 +210,9 @@ run_stage() {
     fi
     [[ -z "${yambo_wall}" ]] && yambo_wall="NA"
 
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${base}/ab_profile_${stage}")"
+
     {
         echo "system=${SYSTEM}"
         echo "stage=${stage}"
@@ -216,6 +220,7 @@ run_stage() {
         echo "status=${status}"
         echo "wall_seconds=${wall}"
         echo "yambo_time_profile=${yambo_wall}"
+        ab_kv "${gc}" "${cc}" "${gpct}" "${build}"
         echo "timestamp=$(ts)"
     } > "${base}/summary_${stage}.txt"
 
@@ -225,8 +230,8 @@ run_stage() {
         TIMEOUT) tag="${C_YLW}TIMEOUT${C_RST}" ;;
         *)       tag="${C_RED}${status}${C_RST}" ;;
     esac
-    printf "    %-6s %-6s  wall=%4ds  yambo=%-10s  [%s]\n" \
-        "${stage}" "${mode}" "${wall}" "${yambo_wall}" "${tag}"
+    printf "    %-6s %-6s  wall=%4ds  yambo=%-10s  gpu_calls=%-6s gpu_time=%s%%  [%s]\n" \
+        "${stage}" "${mode}" "${wall}" "${yambo_wall}" "${gc}" "${gpct}" "${tag}"
 }
 
 for mode in cpu gpu auto; do

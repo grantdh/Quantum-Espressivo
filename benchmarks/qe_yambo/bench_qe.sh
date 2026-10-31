@@ -7,11 +7,14 @@
 # reads AB_MODE at startup):
 #   cpu  : AB_MODE=cpu                         → cblas/Accelerate only
 #   gpu  : AB_MODE=gpu + AB_MIN_GPU_DIM=0      → force every GEMM to Metal GPU
-#   auto : AB_MODE=auto                        → compiled-in threshold routing
+#   auto : AB_MODE=auto                        → apple-bottom's calibrated dispatch table
 #
 # The three modes solve the same SCF; total energies MUST agree to conv_thr.
 # This is the most important output — any divergence means apple-bottom has
 # a numerical bug that must be fixed before we believe the timings.
+#
+# Each mode's summary.txt also records apple-bottom's GPU and CPU calls and the
+# GPU share of their time, summed over ranks, and the library build.
 #
 # Usage: ./bench_qe.sh <system_id> [--timeout SECONDS]
 set -euo pipefail
@@ -90,9 +93,9 @@ run_mode() {
         env -i HOME="$HOME" PATH="$PATH" \
             OMP_NUM_THREADS="${OMP}" \
             ${AB_EXTRA} \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${NP}" "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${NP}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s)
     wall=$((end - start))
@@ -115,6 +118,9 @@ run_mode() {
     [[ -z "${etot}" ]]       && etot="NA"
     [[ -z "${pwscf_wall}" ]] && pwscf_wall="NA"
 
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${out}/ab_profile")"
+
     # summary.txt is the canonical per-mode record used by aggregate.sh
     {
         echo "system=${SYSTEM}"
@@ -124,17 +130,10 @@ run_mode() {
         echo "pwscf_wall=${pwscf_wall}"
         echo "total_energy_Ry=${etot}"
         echo "converged=${conv}"
+        ab_kv "${gc}" "${cc}" "${gpct}" "${build}"
         echo "timestamp=$(ts)"
     } > "${out}/summary.txt"
     echo "${wall}" > "${out}/wall_seconds.txt"
-
-    # GEMM profile summary (if apple-bottom wrote one)
-    if [[ -f "${out}/gemm_profile.txt" ]]; then
-        awk 'NR>1 { g[$6]++; f[$6]+=$5 }
-             END { for (k in g) printf "%s calls=%d total_MNK=%.2e\n",
-                   (k==1?"gpu":"cpu"), g[k], f[k] }' \
-            "${out}/gemm_profile.txt" > "${out}/gemm_summary.txt" || true
-    fi
 
     local tag
     case "${status}" in
@@ -142,8 +141,8 @@ run_mode() {
         TIMEOUT)   tag="${C_YLW}${status}${C_RST}" ;;
         *)         tag="${C_RED}${status}${C_RST}" ;;
     esac
-    printf "    %-6s  wall=%4ds  pwscf=%-10s  E=%-16s  conv=%-3s  [%s]\n" \
-        "${mode}" "${wall}" "${pwscf_wall}" "${etot}" "${conv}" "${tag}"
+    printf "    %-6s  wall=%4ds  pwscf=%-10s  E=%-16s  conv=%-3s  gpu_calls=%-6s gpu_time=%s%%  [%s]\n" \
+        "${mode}" "${wall}" "${pwscf_wall}" "${etot}" "${conv}" "${gc}" "${gpct}" "${tag}"
     return 0
 }
 

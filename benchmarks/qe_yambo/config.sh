@@ -2,12 +2,12 @@
 # Override any of these via environment before invoking the scripts.
 
 # --- apple-bottom dylib ----------------------------------------------------
-: "${AB_ROOT:=$HOME/Dev/arm/metal-algos}"
+: "${AB_ROOT:=$HOME/Dev/Claude/apple-bottom}"
 : "${AB_LIB:=${AB_ROOT}/build/libapplebottom.dylib}"
 : "${AB_INCLUDE:=${AB_ROOT}/include}"
 
 # --- QE: source + target build dirs ---------------------------------------
-# Clean 7.5 tree to patch from (don't touch this — we'll mirror it to BUILD_DIR)
+# Clean 7.5 tree to build from (don't touch this — we'll mirror it to BUILD_DIR)
 : "${QE_SRC_CLEAN:=$HOME/qe-test/q-e-7.5}"
 # Fresh parallel build folder (created from a mirror of QE_SRC_CLEAN)
 : "${QE_BUILD_DIR:=$HOME/qe-test/builds/mpi-gpu-ab}"
@@ -60,6 +60,11 @@ QE_SEARCH_ROOTS=(
 : "${OMPI_CC:=/opt/homebrew/bin/gcc-15}"
 : "${OMPI_FC:=/opt/homebrew/bin/gfortran-15}"
 export OMPI_CC OMPI_FC
+
+# --- Shared with scripts/ --------------------------------------------------
+# AB_WITH_PROFILE, ab_summary and ab_kv for apple-bottom's profile of each run (apple-bottom 1.4
+# and later), check_gemm_bindings, P_CORES and host_desc.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" && pwd)/common.sh"
 
 # --- Color helpers (degrade gracefully when stdout is not a tty) ----------
 if [[ -t 1 ]]; then

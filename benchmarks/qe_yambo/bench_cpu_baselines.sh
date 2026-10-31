@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
-# bench_cpu_baselines.sh — targeted AB_MODE=cpu baselines for the paper.
+# bench_cpu_baselines.sh — AB_MODE=cpu runs at the layouts of the NP × OMP sweeps.
 #
-# The NP × OMP sweeps established winning configs:
-#   si64_500b:  NP=1 OMP=1 (150s), NP=2 OMP=2 (75s)  — apple-bottom engaged
-#   si216:      NP=1 OMP=1 (1240s), NP=2 OMP=2 (506s) — apple-bottom engaged
+# Runs the same binary with apple-bottom's dispatcher forced to the CPU
+# (AB_MODE=cpu) at the (NP, OMP) points below, and sets each against the
+# AB_MODE=auto run of bench_qe_np_omp.sh at the same point: same parallelism,
+# only the routing differs. Ratio = cpu_wall / auto_wall.
 #
-# To claim "apple-bottom speedup" in the paper we need matching AB_MODE=cpu
-# points at the same (NP, OMP) — same parallelism, apple-bottom dispatcher
-# forced to CPU path instead of GPU. Speedup = cpu_wall / auto_wall.
+# Four points:
+#   (si64_500b, NP=1 OMP=1)
+#   (si64_500b, NP=2 OMP=2)
+#   (si216,    NP=1 OMP=1)
+#   (si216,    NP=2 OMP=2)
 #
-# Four points total, ~70 min on M2 Max:
-#   (si64_500b, NP=1 OMP=1)  ~10 min
-#   (si64_500b, NP=2 OMP=2)  ~5 min
-#   (si216,    NP=1 OMP=1)   ~35 min
-#   (si216,    NP=2 OMP=2)   ~15 min
-#
-# Output: results/paper_speedup/paper_speedup.csv with columns:
-#   system,np,omp,mode,wall_s,cpu_calls,gpu_calls,total_E_Ry,status
+# Output: results/cpu_baselines/cpu_baselines.csv with columns:
+#   system,np,omp,mode,wall_s,cpu_calls,gpu_calls,total_E_Ry,status,gpu_time_pct
 #
 # Usage:
 #   ./bench_cpu_baselines.sh [--timeout SECONDS]
@@ -33,11 +30,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-OUT_ROOT="${HERE}/results/paper_speedup"
+OUT_ROOT="${HERE}/results/cpu_baselines"
 mkdir -p "${OUT_ROOT}"
-CSV="${OUT_ROOT}/paper_speedup.csv"
+CSV="${OUT_ROOT}/cpu_baselines.csv"
 if [[ ! -f "${CSV}" ]]; then
-    echo "system,np,omp,mode,wall_s,cpu_calls,gpu_calls,total_E_Ry,status" > "${CSV}"
+    echo "system,np,omp,mode,wall_s,cpu_calls,gpu_calls,total_E_Ry,status,gpu_time_pct" > "${CSV}"
 fi
 
 # Sanity
@@ -70,9 +67,9 @@ run_point() {
             OMP_NUM_THREADS="${omp}" \
             AB_MODE="${mode}" \
             AB_CROSSOVER_FLOPS=100000000 \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${np}" "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${np}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
 
@@ -83,34 +80,28 @@ run_point() {
     etot="$(grep '^! *total energy' "${out}/scf.out" 2>/dev/null | tail -1 | awk '{print $(NF-1)}')"
     [[ -z "${etot}" ]] && etot="NA"
 
-    local cc=0 gc=0
-    if [[ -f "${out}/gemm_profile.txt" ]]; then
-        awk 'NR>1 { g[$6]++ }
-             END { for (k in g) printf "%s calls=%d\n", (k==1?"gpu":"cpu"), g[k] }' \
-            "${out}/gemm_profile.txt" > "${out}/gemm_summary.txt" || true
-        cc=$(grep '^cpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-        gc=$(grep '^gpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    fi
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${out}/ab_profile")"
 
-    printf "    wall=%5ds  cpu_calls=%-5s  gpu_calls=%-5s  E=%-16s  [%s]\n" \
-        "${wall}" "${cc:-0}" "${gc:-0}" "${etot}" "${status}"
-    echo "${system},${np},${omp},${mode},${wall},${cc:-0},${gc:-0},${etot},${status}" >> "${CSV}"
+    printf "    wall=%5ds  cpu_calls=%-5s  gpu_calls=%-5s  gpu_time=%s%%  E=%-16s  [%s]\n" \
+        "${wall}" "${cc}" "${gc}" "${gpct}" "${etot}" "${status}"
+    echo "${system},${np},${omp},${mode},${wall},${cc},${gc},${etot},${status},${gpct}" >> "${CSV}"
 }
 
-echo "[$(ts)] Paper baseline runs (AB_MODE=cpu at winning configs)"
+echo "[$(ts)] AB_MODE=cpu runs at the NP × OMP sweep's layouts"
 echo "[$(ts)] CSV: ${CSV}"
 echo ""
 
-# Four cpu-mode points (matches the winning auto configs)
+# Four cpu-mode points
 run_point si64_500b 1 1 cpu
 run_point si64_500b 2 2 cpu
 run_point si216     1 1 cpu
 run_point si216     2 2 cpu
 
-# --- speedup summary -----------------------------------------------------
+# --- cpu/auto summary ----------------------------------------------------
 echo ""
-echo "${C_BLD}=== Paper speedup table ===${C_RST}"
-printf "  %-12s %-8s %-8s %-8s %-8s\n" "system" "config" "cpu_s" "auto_s" "speedup"
+echo "${C_BLD}=== cpu against auto ===${C_RST}"
+printf "  %-12s %-8s %-8s %-8s %-8s\n" "system" "config" "cpu_s" "auto_s" "cpu/auto"
 
 # Look up auto-mode wall times from prior NP×OMP sweep CSVs
 lookup_auto() {

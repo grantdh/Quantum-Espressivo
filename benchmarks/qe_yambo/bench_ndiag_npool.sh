@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
-# bench_ndiag_npool.sh — Amdahl model validation (paper §4).
+# bench_ndiag_npool.sh — AB_MODE=auto against AB_MODE=cpu with -ndiag 1 and -npool.
 #
 # Four targeted points at NP=4 OMP=1 on a single system:
-#   (auto, -ndiag 1)  apple-bottom engaged, serial diag on rank 0
-#   (cpu,  -ndiag 1)  matched CPU baseline — speedup = cpu/auto
+#   (auto, -ndiag 1)  serial subspace diagonalization
+#   (cpu,  -ndiag 1)  matched CPU baseline — ratio = cpu/auto
 #   (auto, -npool 4)  k-point pool parallelism, serial diag per rank
 #   (cpu,  -npool 4)  matched CPU baseline
 #
-# Predictions (si64, from Amdahl model with s_GPU≈1.05, f_diag≈0.2):
-#   auto -ndiag 1  : ~95-105s, rank-0 gpu_calls ≈ NP=1's 795
-#   auto -npool 4  : ~90-100s, per-rank ZGEMMs over k-points subset
+# The CSV records apple-bottom's GPU and CPU calls and the GPU share of their
+# time, summed over ranks, for each point.
 #
-# If wall times land in the predicted range AND dispatch counts are nonzero,
-# the architectural claim validates: "with -ndiag 1 or -npool N,
-# apple-bottom remains engaged at arbitrary N_P, bounded by Amdahl limit
-# S_max = s_GPU / f_diag."
-#
-# Output: results/paper_model/<system>_<mode>_<flag>.csv columns
-#   system,np,omp,mode,flag,wall_s,cpu_calls,gpu_calls,total_E_Ry,status
+# Output: results/ndiag_npool/ndiag_npool.csv with columns
+#   system,np,omp,mode,flag,wall_s,cpu_calls,gpu_calls,total_E_Ry,status,gpu_time_pct
 #
 # Usage:
 #   ./bench_ndiag_npool.sh [--system si64] [--np 4] [--timeout 1800]
@@ -59,11 +53,11 @@ if [[ ${SKIP_NPOOL} -eq 0 ]] && [[ -f "${BENCH_INPUT_DIR}/${SYSTEM}/scf.in" ]]; 
     fi
 fi
 
-OUT_ROOT="${HERE}/results/paper_model"
+OUT_ROOT="${HERE}/results/ndiag_npool"
 mkdir -p "${OUT_ROOT}"
-CSV="${OUT_ROOT}/model_validation.csv"
+CSV="${OUT_ROOT}/ndiag_npool.csv"
 if [[ ! -f "${CSV}" ]]; then
-    echo "system,np,omp,mode,flag,wall_s,cpu_calls,gpu_calls,total_E_Ry,status" > "${CSV}"
+    echo "system,np,omp,mode,flag,wall_s,cpu_calls,gpu_calls,total_E_Ry,status,gpu_time_pct" > "${CSV}"
 fi
 
 INPUT="${BENCH_INPUT_DIR}/${SYSTEM}/scf.in"
@@ -93,9 +87,9 @@ run_point() {
             OMP_NUM_THREADS="${OMP_N}" \
             AB_MODE="${mode}" \
             AB_CROSSOVER_FLOPS=100000000 \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${NPR}" "${PW_BIN}" -${flag_name} "${flag_val}" -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${NPR}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" -${flag_name} "${flag_val}" -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
 
@@ -106,21 +100,15 @@ run_point() {
     etot="$(grep '^! *total energy' "${out}/scf.out" 2>/dev/null | tail -1 | awk '{print $(NF-1)}')"
     [[ -z "${etot}" ]] && etot="NA"
 
-    local cc=0 gc=0
-    if [[ -f "${out}/gemm_profile.txt" ]]; then
-        awk 'NR>1 { g[$6]++ }
-             END { for (k in g) printf "%s calls=%d\n", (k==1?"gpu":"cpu"), g[k] }' \
-            "${out}/gemm_profile.txt" > "${out}/gemm_summary.txt" || true
-        cc=$(grep '^cpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-        gc=$(grep '^gpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    fi
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${out}/ab_profile")"
 
-    printf "    wall=%5ds  cpu_calls=%-5s  gpu_calls=%-5s  E=%-16s  [%s]\n" \
-        "${wall}" "${cc:-0}" "${gc:-0}" "${etot}" "${status}"
-    echo "${SYSTEM},${NPR},${OMP_N},${mode},-${flag_name}=${flag_val},${wall},${cc:-0},${gc:-0},${etot},${status}" >> "${CSV}"
+    printf "    wall=%5ds  cpu_calls=%-5s  gpu_calls=%-5s  gpu_time=%s%%  E=%-16s  [%s]\n" \
+        "${wall}" "${cc}" "${gc}" "${gpct}" "${etot}" "${status}"
+    echo "${SYSTEM},${NPR},${OMP_N},${mode},-${flag_name}=${flag_val},${wall},${cc},${gc},${etot},${status},${gpct}" >> "${CSV}"
 }
 
-echo "[$(ts)] Amdahl model validation on ${SYSTEM} at NP=${NPR} OMP=${OMP_N}"
+echo "[$(ts)] -ndiag 1 / -npool runs on ${SYSTEM} at NP=${NPR} OMP=${OMP_N}"
 echo "[$(ts)] CSV: ${CSV}"
 echo ""
 
@@ -135,8 +123,8 @@ fi
 
 # --- summary ------------------------------------------------------------
 echo ""
-echo "${C_BLD}=== Model validation summary: ${SYSTEM} at NP=${NPR} ===${C_RST}"
-printf "  %-22s %-8s %-10s %-10s %-8s\n" "config" "wall_s" "cpu_calls" "gpu_calls" "speedup"
+echo "${C_BLD}=== Summary: ${SYSTEM} at NP=${NPR} ===${C_RST}"
+printf "  %-22s %-8s %-10s %-10s %-8s\n" "config" "wall_s" "cpu_calls" "gpu_calls" "cpu/auto"
 
 get_wall() {
     awk -F, -v s="${SYSTEM}" -v n="${NPR}" -v o="${OMP_N}" -v m="$1" -v f="$2" \
@@ -154,13 +142,8 @@ for pair in "${PAIRS[@]}"; do
     else
         sp="NA"
     fi
-    printf "  -%-20s  auto=%-6s  cpu=%-6s  speedup=%s\n" "${pair}" "${aw:-NA}" "${cw:-NA}" "${sp}"
+    printf "  -%-20s  auto=%-6s  cpu=%-6s  cpu/auto=%s\n" "${pair}" "${aw:-NA}" "${cw:-NA}" "${sp}"
 done
 
 echo ""
 echo "CSV: ${CSV}"
-echo ""
-echo "Paper claim validates if:"
-echo "  (a) both auto runs show nonzero gpu_calls (apple-bottom engaged)"
-echo "  (b) auto wall < cpu wall (GPU path faster than CPU path)"
-echo "  (c) speedup is within Amdahl bound: s_GPU / f_diag for this system"

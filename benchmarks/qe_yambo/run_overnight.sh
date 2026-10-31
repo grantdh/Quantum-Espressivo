@@ -8,10 +8,8 @@
 #      results/qe_si64_nposmp/ and is not re-run.
 #   2. Collect results + write REPORT.md.
 #
-# Per-system grids are reduced to skip redundant "scalapack eats everything"
-# configurations. NP=4 OMP=2 and NP=8 on the largest system are omitted on
-# the theory that scalapack bypasses apple-bottom at NP≥2 regardless of
-# system size, so those points just confirm the same architectural finding.
+# Per-system grids are reduced to keep the night short: NP=4 OMP=2, and NP=8
+# on the largest system, are omitted.
 #
 # Designed to run unattended. Failures in one system don't block the next.
 #
@@ -35,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Per-system grid: (trimmed based on si64 learning that scalapack eats work at NP≥2)
+# Per-system grid
 grid_for() {
     case "$1" in
         si64_500b) echo "1,1 1,4 2,2 4,1 8,1" ;;
@@ -52,16 +50,6 @@ exec > >(tee -a "${LOG}") 2>&1
 
 banner() { echo ""; echo "${C_BLD}========== $1 ==========${C_RST}"; }
 fail()   { echo "${C_RED}[stage failure]${C_RST} $*" | tee -a "${OVN}/FAILURES.txt"; }
-host_desc() {
-    local chip p e mem gpu
-    chip=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')
-    p=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo '?')
-    e=$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || echo '?')
-    mem=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
-    # Only ioreg reports the GPU core count; read to the end so ioreg never sees SIGPIPE.
-    gpu=$(ioreg -rc AGXAccelerator -d1 2>/dev/null | awk -F'= ' '/"gpu-core-count"/{n=$2} END{print n}') || gpu=''
-    echo "${chip} (${p} P-cores + ${e} E-cores, ${gpu:-?}-core GPU, ${mem} GB), macOS $(sw_vers -productVersion 2>/dev/null || echo '?')"
-}
 
 echo "[$(ts)] overnight start  -> ${OVN}"
 echo "[$(ts)] threshold=${THRESHOLD}  systems='${SYSTEMS}'  timeout/point=${TIMEOUT_PER_POINT}s"
@@ -132,14 +120,6 @@ banner "Writing REPORT.md"
     echo "- libapplebottom: \`${AB_LIB}\`"
     echo "- AB_CROSSOVER_FLOPS: ${THRESHOLD}"
     echo "- Per-point timeout: ${TIMEOUT_PER_POINT}s"
-    echo ""
-    echo "## Architectural note"
-    echo ""
-    echo "The si64 sweep established that at NP≥2, ScaLAPACK's parallel"
-    echo "eigensolvers handle the dominant GEMM work and bypass apple-bottom's"
-    echo "patched call sites in QE. Expected symptom on si64_500b / si216 at"
-    echo "NP≥2: \`cpu_calls=0 gpu_calls=0\` (not a bug). The paper-relevant"
-    echo "apple-bottom numbers are the NP=1 rows."
     echo ""
     for s in ${SUMMARIES}; do
         echo "## ${s}"

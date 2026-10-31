@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# bench_qe_np_omp.sh — 6-point NP × OMP sweep on M2 Max.
+# bench_qe_np_omp.sh — 6-point NP × OMP sweep.
 #
-# Runs QE SCF under AB_MODE=auto at fixed AB_CROSSOVER_FLOPS, varying only
-# (NP, OMP). Single trial per point — threshold sweep already established
-# ~1% run-to-run noise, which is dwarfed by the 2-4× range expected across
-# parallel configs.
+# Runs QE SCF under AB_MODE=auto at fixed AB_CROSSOVER_FLOPS (a FLOP threshold
+# that replaces apple-bottom's calibrated table), varying only (NP, OMP).
+# Single trial per point.
 #
-# M2 Max topology: 8 P-cores + 4 E-cores. Keep NP × OMP ≤ 8 to stay on P-cores.
-# NP=8 OMP=1 is the ceiling point; going above spills onto E-cores (~3× slower).
+# Keep NP × OMP ≤ the number of performance cores (hw.perflevel0; 8 on an
+# M2 Max) to stay off the efficiency cores; points above it are flagged.
 #
 # Grid:
 #   (1,1)  baseline                               — single-rank, single-thread
 #   (1,4)  single GPU context + OMP on CPU calls  — OMP scaling test
 #   (2,2)  balanced                               — 2 GPU contexts, moderate OMP
-#   (4,1)  paper-realistic pure MPI               — 4 GPU contexts
-#   (4,2)  full P-core utilization                — NP × OMP = 8
+#   (4,1)  pure MPI                               — 4 GPU contexts
+#   (4,2)  NP × OMP = 8                           — all P-cores of an M2 Max
 #   (8,1)  max MPI, GPU context contention        — tests ceiling
 #
-# Output: results/qe_<sys>_nposmp/np<N>_omp<M>/summary.txt + nposmp.csv
+# Output: results/qe_<sys>_nposmp/np<N>_omp<M>/summary.txt + nposmp.csv, with
+# apple-bottom's GPU and CPU calls and the GPU share of their time, summed over ranks
 #
 # Usage:
 #   ./bench_qe_np_omp.sh <system_id>
@@ -48,7 +48,7 @@ done
 OUT_ROOT="${HERE}/results/qe_${SYSTEM}_nposmp"
 mkdir -p "${OUT_ROOT}"
 CSV="${OUT_ROOT}/nposmp.csv"
-echo "np,omp,wall_s,cpu_calls,gpu_calls,total_E_Ry,status" > "${CSV}"
+echo "np,omp,wall_s,cpu_calls,gpu_calls,total_E_Ry,status,gpu_time_pct" > "${CSV}"
 
 # --- locate input --------------------------------------------------------
 INPUT_FILE=""
@@ -86,9 +86,9 @@ run_point() {
     rm -rf "${out}"; mkdir -p "${out}"
     cp "${INPUT_FILE}" "${out}/scf.in"
 
-    # Warn on E-core spillover (M2 Max: 8 P-cores, 4 E-cores)
+    # Warn on E-core spillover
     local warn=""
-    if (( product > 8 )); then
+    if (( P_CORES > 0 && product > P_CORES )); then
         warn=" ${C_YLW}[spills to E-cores]${C_RST}"
     fi
 
@@ -103,9 +103,9 @@ run_point() {
             OMP_NUM_THREADS="${omp}" \
             AB_MODE=auto \
             AB_CROSSOVER_FLOPS="${THRESHOLD}" \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${np}" "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${np}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
 
@@ -116,6 +116,8 @@ run_point() {
     grep -q "convergence has been achieved" "${out}/scf.out" 2>/dev/null && conv="yes"
     etot="$(grep '^! *total energy' "${out}/scf.out" 2>/dev/null | tail -1 | awk '{print $(NF-1)}')"
     [[ -z "${etot}" ]] && etot="NA"
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${out}/ab_profile")"
 
     {
         echo "system=${SYSTEM}"
@@ -126,23 +128,13 @@ run_point() {
         echo "wall_seconds=${wall}"
         echo "total_energy_Ry=${etot}"
         echo "converged=${conv}"
+        ab_kv "${gc}" "${cc}" "${gpct}" "${build}"
         echo "timestamp=$(ts)"
     } > "${out}/summary.txt"
+    printf "    NP=%d OMP=%d  wall=%4ds  cpu_calls=%-5s  gpu_calls=%-5s  gpu_time=%s%%  E=%-16s  [%s]\n" \
+        "${np}" "${omp}" "${wall}" "${cc}" "${gc}" "${gpct}" "${etot}" "${status}"
 
-    if [[ -f "${out}/gemm_profile.txt" ]]; then
-        awk 'NR>1 { g[$6]++; f[$6]+=$5 }
-             END { for (k in g) printf "%s calls=%d total_MNK=%.2e\n",
-                   (k==1?"gpu":"cpu"), g[k], f[k] }' \
-            "${out}/gemm_profile.txt" > "${out}/gemm_summary.txt" || true
-    fi
-
-    local cc gc
-    cc=$(grep '^cpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    gc=$(grep '^gpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    printf "    NP=%d OMP=%d  wall=%4ds  cpu_calls=%-5s  gpu_calls=%-5s  E=%-16s  [%s]\n" \
-        "${np}" "${omp}" "${wall}" "${cc:-0}" "${gc:-0}" "${etot}" "${status}"
-
-    echo "${np},${omp},${wall},${cc:-0},${gc:-0},${etot},${status}" >> "${CSV}"
+    echo "${np},${omp},${wall},${cc},${gc},${etot},${status},${gpct}" >> "${CSV}"
 }
 
 for point in ${GRID}; do
@@ -154,11 +146,11 @@ done
 # --- summary + winner selection ------------------------------------------
 echo ""
 echo "${C_BLD}=== NP × OMP sweep summary: QE ${SYSTEM} ===${C_RST}"
-printf "  %-12s %-8s %-10s %-10s %-16s %-8s\n" "config" "wall_s" "cpu_calls" "gpu_calls" "total_E_Ry" "status"
+printf "  %-12s %-8s %-10s %-10s %-9s %-16s %-8s\n" "config" "wall_s" "cpu_calls" "gpu_calls" "gpu_time" "total_E_Ry" "status"
 # Print rows
-tail -n +2 "${CSV}" | while IFS=, read -r np omp wall cc gc e status; do
-    printf "  NP=%-2d OMP=%-2d  %-8s %-10s %-10s %-16s %-8s\n" \
-        "${np}" "${omp}" "${wall}" "${cc}" "${gc}" "${e}" "${status}"
+tail -n +2 "${CSV}" | while IFS=, read -r np omp wall cc gc e status gpct; do
+    printf "  NP=%-2d OMP=%-2d  %-8s %-10s %-10s %-9s %-16s %-8s\n" \
+        "${np}" "${omp}" "${wall}" "${cc}" "${gc}" "${gpct}%" "${e}" "${status}"
 done
 
 # --- cross-check: energy agreement across points -------------------------
@@ -171,7 +163,7 @@ if [[ -z "${REF_E}" ]]; then
 fi
 
 DISAGREE=0
-while IFS=, read -r np omp wall cc gc e status; do
+while IFS=, read -r np omp wall cc gc e status gpct; do
     [[ "${status}" == "OK" ]] || continue
     [[ "${e}" == "NA" ]] && continue
     diff=$(python3 -c "print(abs(${e} - ${REF_E}))" 2>/dev/null || echo 1)

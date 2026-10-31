@@ -1,212 +1,148 @@
 #!/bin/bash
-# validate.sh — Run Si64 SCF benchmark comparing baseline vs Metal-accelerated QE
+# validate.sh — check that QE gives the same answers with its GEMMs on the GPU
 #
 # Usage:
-#   ./scripts/validate.sh [--input /path/to/si64.in]
+#   ./scripts/validate.sh [--input file.in] [--pw path/to/pw.x]
+#
+# Runs one apple-bottom-linked pw.x (build-qe-metal.sh's) twice on the same input, as
+# apple-bottom's VAL-1 does: with AB_MODE=cpu (every GEMM on Accelerate) and with AB_MODE=gpu
+# (every GEMM whose dimensions all exceed AB_MIN_GPU_DIM on the GPU), recording apple-bottom's
+# profile of both. It passes if the two runs converge in the same number of SCF iterations to
+# final total energies within TOL_RY (default 1e-6 Ry, VAL-1's criterion), and apple-bottom
+# received the GEMMs of both runs and computed some of the gpu run's on the GPU.
+#
+# The default input, tests/inputs/si8_smoke.in, takes seconds. An input without pseudo_dir
+# reads its pseudopotentials from PSEUDO_DIR (default: deps/qe/pseudo, which has the smoke
+# input's). OMP_NUM_THREADS defaults to 1. The wall times are single runs, not a benchmark.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESPRESSIVO_ROOT="$(dirname "$SCRIPT_DIR")"
-QE_DIR="$ESPRESSIVO_ROOT/deps/qe-7.5"
-RESULTS_DIR="$ESPRESSIVO_ROOT/results"
+source "$SCRIPT_DIR/common.sh"
+RESULTS_DIR="$ESPRESSIVO_ROOT/results/validate"
+INPUT="$ESPRESSIVO_ROOT/tests/inputs/si8_smoke.in"
+PW="$QE_DIR/build-metal/bin/pw.x"
+TOL_RY="${TOL_RY:-1e-6}"
 
-# Parse flags
-SI64_INPUT=""
-for arg in "$@"; do
-    case $arg in
-        --input) shift; SI64_INPUT="$1" ;;
-        --input=*) SI64_INPUT="${arg#*=}" ;;
+while [ $# -gt 0 ]; do
+    case $1 in
+        --input)   shift; INPUT="$1" ;;
+        --input=*) INPUT="${1#*=}" ;;
+        --pw)      shift; PW="$1" ;;
+        --pw=*)    PW="${1#*=}" ;;
+        *) echo "Usage: $0 [--input file.in] [--pw path/to/pw.x]"; exit 1 ;;
     esac
+    shift
 done
 
-# Find or create Si64 input
-if [ -z "$SI64_INPUT" ]; then
-    # Check common locations
-    for path in \
-        "$ESPRESSIVO_ROOT/benchmarks/si64.in" \
-        "$HOME/qe-test/benchmark/si64.in" \
-        "$HOME/qe-test/si64.in"; do
-        if [ -f "$path" ]; then
-            SI64_INPUT="$path"
-            break
-        fi
-    done
-fi
-
-if [ -z "$SI64_INPUT" ]; then
-    echo "ERROR: Cannot find si64.in benchmark input."
-    echo "Provide path with: ./scripts/validate.sh --input /path/to/si64.in"
+if [ ! -f "$INPUT" ]; then
+    echo "ERROR: no input file $INPUT"
     exit 1
 fi
-
-echo "============================================"
-echo "Espressivo: Si64 SCF Validation"
-echo "============================================"
-echo "Input: $SI64_INPUT"
-echo ""
-
-mkdir -p "$RESULTS_DIR"
-
-# Check both builds exist
-BASELINE_PW="$QE_DIR/build-baseline/bin/pw.x"
-METAL_PW="$QE_DIR/build-metal/bin/pw.x"
-
-if [ ! -f "$BASELINE_PW" ]; then
-    echo "ERROR: Baseline pw.x not found at $BASELINE_PW"
-    echo "Run ./scripts/build-qe-metal.sh first"
+INPUT="$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")"
+if [ ! -x "$PW" ]; then
+    echo "ERROR: no pw.x at $PW; run ./scripts/build-qe-metal.sh first"
     exit 1
 fi
-
-if [ ! -f "$METAL_PW" ]; then
-    echo "ERROR: Metal pw.x not found at $METAL_PW"
-    echo "Run ./scripts/build-qe-metal.sh first"
+if ! links_apple_bottom "$PW"; then
+    echo "ERROR: $PW does not load libapplebottom.dylib"
     exit 1
 fi
+export ESPRESSO_PSEUDO="${PSEUDO_DIR:-$QE_DIR/pseudo}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 
-# Pseudopotential directory — use the input file's directory as the source
-INPUT_DIR="$(cd "$(dirname "$SI64_INPUT")" && pwd)"
-
-# Find pseudopotentials: check input dir, then input dir/pseudo
-PSEUDO_DIR="$INPUT_DIR"
-if [ -d "$INPUT_DIR/pseudo" ]; then
-    PSEUDO_DIR="$INPUT_DIR/pseudo"
-fi
-# Override if input file specifies an absolute pseudo_dir
-ABS_PSEUDO=$(grep -i "pseudo_dir" "$SI64_INPUT" | grep -o "'[^']*'" | tr -d "'" | head -1)
-if [ -n "$ABS_PSEUDO" ] && [ "${ABS_PSEUDO:0:1}" = "/" ]; then
-    PSEUDO_DIR="$ABS_PSEUDO"
-fi
-
-PP_COUNT=$(ls "$PSEUDO_DIR"/*.upf "$PSEUDO_DIR"/*.UPF "$INPUT_DIR"/*.upf "$INPUT_DIR"/*.UPF 2>/dev/null | sort -u | wc -l | tr -d ' ')
-echo "Pseudo dir: $PSEUDO_DIR ($PP_COUNT pseudopotential files found)"
-
-if [ "$PP_COUNT" -eq 0 ]; then
-    echo "WARNING: No .upf/.UPF pseudopotential files found"
-    echo "QE will fail. Place pseudopotentials alongside your input file."
-fi
-
-# Run 1: Baseline (CPU only)
-echo ""
-echo "--- Running Baseline (CPU BLAS) ---"
-WORK_DIR="$RESULTS_DIR/baseline_run"
-rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR/tmp"
-
-cd "$WORK_DIR"
-
-# Symlink pseudopotentials into the working directory
-# Search both PSEUDO_DIR and INPUT_DIR (they may differ)
-for dir in "$PSEUDO_DIR" "$INPUT_DIR"; do
-    for pp in "$dir"/*.upf "$dir"/*.UPF "$dir"/*.pz-* "$dir"/*.pbe-*; do
-        [ -f "$pp" ] && ln -sf "$pp" . 2>/dev/null
-    done
-done
-
-export OMP_NUM_THREADS=4
-
-echo "Starting baseline run..."
-START_TIME=$(python3 -c "import time; print(time.time())")
-"$BASELINE_PW" < "$SI64_INPUT" > baseline.out 2>&1 || true
-END_TIME=$(python3 -c "import time; print(time.time())")
-BASELINE_WALL=$(python3 -c "print(f'{$END_TIME - $START_TIME:.1f}')")
-
-BASELINE_ENERGY=$(grep '!' baseline.out | tail -1 | awk '{print $5}')
-BASELINE_SCF=$(grep 'convergence has been achieved' baseline.out | awk '{print $6}' | head -1)
-
-echo "  Wall time:    ${BASELINE_WALL}s"
-echo "  Total energy: ${BASELINE_ENERGY} Ry"
-echo "  SCF iters:    ${BASELINE_SCF}"
-
-# Run 2: Metal-accelerated
-echo ""
-echo "--- Running Metal-Accelerated ---"
-WORK_DIR="$RESULTS_DIR/metal_run"
-rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR/tmp"
-
-cd "$WORK_DIR"
-
-# Symlink pseudopotentials into the working directory
-# Search both PSEUDO_DIR and INPUT_DIR (they may differ)
-for dir in "$PSEUDO_DIR" "$INPUT_DIR"; do
-    for pp in "$dir"/*.upf "$dir"/*.UPF "$dir"/*.pz-* "$dir"/*.pbe-*; do
-        [ -f "$pp" ] && ln -sf "$pp" . 2>/dev/null
-    done
-done
-
-export AB_PROFILE=1
-export AB_PROFILE_JSON="$WORK_DIR/ab_profile.json"
-
-echo "Starting Metal run..."
-START_TIME=$(python3 -c "import time; print(time.time())")
-"$METAL_PW" < "$SI64_INPUT" > metal.out 2>&1 || true
-END_TIME=$(python3 -c "import time; print(time.time())")
-METAL_WALL=$(python3 -c "print(f'{$END_TIME - $START_TIME:.1f}')")
-
-METAL_ENERGY=$(grep '!' metal.out | tail -1 | awk '{print $5}')
-METAL_SCF=$(grep 'convergence has been achieved' metal.out | awk '{print $6}' | head -1)
-
-# Parse profiling data (apple-bottom v1.3.x JSON format)
-if [ -f "$WORK_DIR/ab_profile.json" ]; then
-    GPU_CALLS=$(python3 -c "import json; d=json.load(open('$WORK_DIR/ab_profile.json')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-    CPU_CALLS=$(python3 -c "import json; d=json.load(open('$WORK_DIR/ab_profile.json')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-    TOTAL_CALLS=$((GPU_CALLS + CPU_CALLS))
-else
-    GPU_CALLS="N/A"
-    CPU_CALLS="N/A"
-    TOTAL_CALLS="N/A"
-fi
-
-echo "  Wall time:    ${METAL_WALL}s"
-echo "  Total energy: ${METAL_ENERGY} Ry"
-echo "  SCF iters:    ${METAL_SCF}"
-echo "  GPU calls:    ${GPU_CALLS}/${TOTAL_CALLS}"
-
-# Summary
-echo ""
 echo "============================================"
-echo "RESULTS COMPARISON"
+echo "Espressivo: AB_MODE=cpu against AB_MODE=gpu"
 echo "============================================"
+echo "pw.x:  $PW"
+echo "Input: $INPUT"
 echo ""
-printf "%-20s %-20s %-20s\n" "Metric" "Baseline (CPU)" "Metal (GPU)"
-printf "%-20s %-20s %-20s\n" "----" "----" "----"
-printf "%-20s %-20s %-20s\n" "Wall time" "${BASELINE_WALL}s" "${METAL_WALL}s"
-printf "%-20s %-20s %-20s\n" "Total energy" "${BASELINE_ENERGY} Ry" "${METAL_ENERGY} Ry"
-printf "%-20s %-20s %-20s\n" "SCF iterations" "${BASELINE_SCF}" "${METAL_SCF}"
-printf "%-20s %-20s %-20s\n" "GPU/CPU routing" "N/A" "${GPU_CALLS}/${TOTAL_CALLS}"
 
-# Compute speedup
-if [ -n "$BASELINE_WALL" ] && [ -n "$METAL_WALL" ]; then
-    SPEEDUP=$(python3 -c "print(f'{$BASELINE_WALL / $METAL_WALL:.2f}')")
-    echo ""
-    echo "Speedup: ${SPEEDUP}x"
-fi
-
-# Check energy agreement
-if [ -n "$BASELINE_ENERGY" ] && [ -n "$METAL_ENERGY" ]; then
-    echo ""
-    if [ "$BASELINE_ENERGY" = "$METAL_ENERGY" ]; then
-        echo "ENERGY: EXACT MATCH"
-    else
-        echo "ENERGY: Check agreement manually (may differ in last digits)"
+# run_mode MODE: run pw.x in results/validate/MODE; keep the total energy of every SCF
+# iteration and the final one (the "!" line), and the wall time.
+run_mode() {
+    local mode="$1" dir="$RESULTS_DIR/$1" t0
+    rm -rf "$dir" && mkdir -p "$dir"
+    echo "Running with AB_MODE=$mode..."
+    t0=$(date +%s)
+    if ! (cd "$dir" && AB_MODE="$mode" "$AB_WITH_PROFILE" "$dir/ab_profile" \
+            "$PW" -in "$INPUT" > pw.out 2> pw.err); then
+        echo "ERROR: pw.x failed with AB_MODE=$mode; see $dir/pw.out and $dir/pw.err"
+        exit 1
     fi
-fi
+    echo $(( $(date +%s) - t0 )) > "$dir/wall_seconds"
+    awk '/^ *!? +total energy +=/ {print $(NF-1)}' "$dir/pw.out" > "$dir/energies"
+}
 
-# Save results
-REPORT="$RESULTS_DIR/validation_report.txt"
+# result MODE: "<final energy> <SCF iterations> <wall s> <gpu_calls> <cpu_calls>
+# <gpu_time_pct> <build>", with NA for an energy or iteration count the output lacks. Fails
+# if a process wrote no profile.
+result() {
+    local dir="$RESULTS_DIR/$1" energy iters profile
+    energy=$(qe_energy "$dir/pw.out")
+    iters=$(qe_iterations "$dir/pw.out")
+    profile=$(python3 "$SCRIPT_DIR/ab_profile.py" "$dir/ab_profile") || return 1
+    echo "${energy:-NA} ${iters:-NA} $(cat "$dir/wall_seconds") $profile"
+}
+
+run_mode cpu
+run_mode gpu
+R_CPU=$(result cpu)
+R_GPU=$(result gpu)
+read -r E_CPU IT_CPU T_CPU GC_CPU CC_CPU GP_CPU _ <<< "$R_CPU"
+read -r E_GPU IT_GPU T_GPU GC_GPU CC_GPU GP_GPU BUILD_GPU <<< "$R_GPU"
+
+FAILURES=""
+fail() { FAILURES="$FAILURES  - $1"$'\n'; }
+if [ "$E_CPU" = NA ] || [ "$E_GPU" = NA ] || [ "$IT_CPU" = NA ] || [ "$IT_GPU" = NA ]; then
+    fail "a run did not converge"
+else
+    [ "$IT_CPU" = "$IT_GPU" ] || fail "SCF iterations differ: $IT_CPU (cpu), $IT_GPU (gpu)"
+    DE=$(python3 -c "d = abs($E_GPU - $E_CPU); print(f'{d:.2e}'); raise SystemExit(d > $TOL_RY)") \
+        || fail "final total energies differ by $DE Ry (tolerance $TOL_RY Ry)"
+fi
+[ $((GC_CPU + CC_CPU)) -gt 0 ] || fail "apple-bottom recorded no GEMMs: dgemm_ and zgemm_ do not reach it"
+[ "$GC_GPU" -gt 0 ] || fail "the gpu run made no GPU calls"
+[ "$GC_CPU" -eq 0 ] || fail "the cpu run made $GC_CPU GPU calls"
+if cmp -s "$RESULTS_DIR/cpu/energies" "$RESULTS_DIR/gpu/energies"; then
+    AGREEMENT="identical as printed, at all $(wc -l < "$RESULTS_DIR/cpu/energies" | tr -d ' ') values (every SCF iteration and the final one)"
+else
+    AGREEMENT="not identical as printed: see $RESULTS_DIR/{cpu,gpu}/energies"
+fi
+VERDICT=PASS
+[ -z "$FAILURES" ] || VERDICT=FAIL
+
+pct() { if [ "$1" = n/a ]; then echo n/a; else echo "$1%"; fi; }
+REPORT="$RESULTS_DIR/report.txt"
 {
-    echo "Espressivo Validation Report"
-    echo "Date: $(date)"
-    echo "QE Version: 7.5 (developer branch)"
-    echo "apple-bottom: $(grep VERSION_STRING $ESPRESSIVO_ROOT/deps/apple-bottom/include/apple_bottom.h 2>/dev/null | head -1 || echo 'unknown')"
+    echo "Espressivo validation: AB_MODE=cpu against AB_MODE=gpu"
+    echo "Date:         $(date '+%Y-%m-%d %H:%M:%S %z')"
+    echo "Host:         $(host_desc), $(pmset -g batt | head -1 | sed -E "s/.*'(.*)'.*/\1/")"
+    echo "pw.x:         $PW"
+    echo "apple-bottom: $BUILD_GPU"
+    echo "Input:        $INPUT"
+    echo "Threads:      OMP_NUM_THREADS=$OMP_NUM_THREADS, one process"
     echo ""
-    echo "Baseline: ${BASELINE_WALL}s, E=${BASELINE_ENERGY} Ry, ${BASELINE_SCF} SCF iters"
-    echo "Metal:    ${METAL_WALL}s, E=${METAL_ENERGY} Ry, ${METAL_SCF} SCF iters"
-    echo "Speedup:  ${SPEEDUP}x"
-    echo "GPU routing: ${GPU_CALLS}/${TOTAL_CALLS} calls"
+    printf "%-26s %-22s %-22s\n" "" "AB_MODE=cpu" "AB_MODE=gpu"
+    printf "%-26s %-22s %-22s\n" "Final total energy (Ry)" "$E_CPU" "$E_GPU"
+    printf "%-26s %-22s %-22s\n" "SCF iterations" "$IT_CPU" "$IT_GPU"
+    printf "%-26s %-22s %-22s\n" "GEMMs on the GPU" "$GC_CPU of $((GC_CPU + CC_CPU))" \
+           "$GC_GPU of $((GC_GPU + CC_GPU))"
+    printf "%-26s %-22s %-22s\n" "GPU share of GEMM time" "$(pct "$GP_CPU")" "$(pct "$GP_GPU")"
+    printf "%-26s %-22s %-22s\n" "Wall time, one run (s)" "$T_CPU" "$T_GPU"
+    echo ""
+    echo "Total energies: $AGREEMENT"
+    echo "Result: $VERDICT"
+    printf "%s" "$FAILURES"
+    if [ -f "$(dirname "$PW")/../PROVENANCE.txt" ]; then
+        echo ""
+        echo "Build provenance:"
+        sed 's/^/  /' "$(dirname "$PW")/../PROVENANCE.txt"
+    fi
 } > "$REPORT"
 
+cat "$REPORT"
 echo ""
-echo "Report saved to: $REPORT"
-echo "Detailed output: $RESULTS_DIR/baseline_run/baseline.out"
-echo "                 $RESULTS_DIR/metal_run/metal.out"
-echo "Profiling JSON:  $RESULTS_DIR/metal_run/ab_profile.json"
+echo "Report: $REPORT"
+echo "Runs:   $RESULTS_DIR/cpu, $RESULTS_DIR/gpu"
+[ "$VERDICT" = PASS ]

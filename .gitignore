@@ -24,10 +24,6 @@ build/
 *.bak
 .vscode/
 
-# Claude Code
-.claude/
-CLAUDE.md
-
 # Test outputs
 test-results/
 *.out

@@ -25,19 +25,13 @@ The split works at the same interface. `split/qe_split.c`, linked into `pw.x` ah
 
 ## Building
 
-The scripts below were last run in April 2026 with apple-bottom 1.3 and have not been updated since:
-
-- `build-qe-metal.sh` patches `KS_Solvers/Davidson/cegterg.f90` to call `ab_zgemm` in place of `ZGEMM`. apple-bottom 1.4 and later do not need the patch.
-- `validate.sh` and the benchmark scripts read apple-bottom 1.3's profile format, so their GPU-call counts are wrong with 1.4 and later.
-- The "GPU" runs they produced with 1.3 ran on the CPU (see [docs/CORRECTIONS.md](docs/CORRECTIONS.md)).
-
-Until they are updated, use apple-bottom's [QE benchmark kit](https://github.com/grantdh/apple-bottom/blob/main/benchmarks/qe/README.md), which describes the QE builds behind its measurements.
+The scripts fetch apple-bottom 1.5.0 and one commit of QE's `develop` branch (`b6615c50`, 2026-10-30, which reports version 8.0dev), so that a build can be repeated. [`scripts/common.sh`](scripts/common.sh) holds these pins; `APPLE_BOTTOM_COMMIT` or `QE_COMMIT` in the environment overrides them. Each QE build records what it was made from in `PROVENANCE.txt`, next to its `bin/`.
 
 ### Prerequisites
 
 - macOS 14+ (Sonoma) with Xcode 16+ SDK
 - Apple Silicon (M1 or later)
-- Homebrew packages: `gcc`, `open-mpi`, `openblas`, `fftw`, `scalapack`
+- Homebrew packages: `gcc`, `open-mpi`, `openblas`, `fftw`, `scalapack`, `cmake`
 
 ### Build Steps
 
@@ -45,35 +39,37 @@ Until they are updated, use apple-bottom's [QE benchmark kit](https://github.com
 git clone https://github.com/grantdh/Quantum-Espressivo.git
 cd Quantum-Espressivo
 
-# 1. Build apple-bottom (or point APPLE_BOTTOM_DIR to an existing build)
+# 1. Fetch and build apple-bottom, and run its tests (or set APPLE_BOTTOM_DIR to a built checkout)
 ./scripts/setup-apple-bottom.sh
 
-# 2. Clone QE develop and build it against apple-bottom
+# 2. Fetch QE and build pw.x linked against apple-bottom; QE's source is not changed
 ./scripts/build-qe-metal.sh
 
-# 3. Build the Accelerate baseline
-./scripts/build-qe-accelerate.sh
-
-# 4. Run Si64 with both builds and compare total energies
+# 3. Run that pw.x with AB_MODE=cpu and with AB_MODE=gpu, and compare the results
 ./scripts/validate.sh
+
+# Optional: the Accelerate-only build that the benchmarks compare against
+./scripts/build-qe-accelerate.sh
 ```
+
+`validate.sh` passes when the two runs converge in the same number of SCF iterations to the same total energy (within 10⁻⁶ Ry) and the gpu run computed GEMMs on the GPU. It reports both runs' energies, apple-bottom's GPU and CPU calls, and the GPU share of their time. Its default input, an 8-atom silicon cell, runs in seconds; `--input` takes any pw.x input.
 
 ### Benchmarking
 
 ```bash
-# Quick comparison: OpenBLAS, Accelerate, and two apple-bottom routing settings
+# Quick comparison: OpenBLAS, Accelerate, and the apple-bottom build with AB_MODE=auto and AB_MODE=gpu
 ./scripts/benchmark-4way.sh
 
 # Overnight sweep (several systems, repeated runs, statistics)
 ./scripts/benchmark-overnight.sh
 ```
 
-Benchmark configurations and analysis scripts are in [`benchmarks/qe_yambo/`](benchmarks/qe_yambo/).
+The runs of apple-bottom builds go through [`scripts/with-ab-profile.sh`](scripts/with-ab-profile.sh), so that each process (each MPI rank) writes apple-bottom's profile, and [`scripts/ab_profile.py`](scripts/ab_profile.py) adds them up. Benchmark configurations and analysis scripts are in [`benchmarks/qe_yambo/`](benchmarks/qe_yambo/).
 
 ## Requirements
 
-- **QE version**: 7.5 or later; the build scripts clone the head of `develop` (the `.bands` post-processing tool requires 7.5)
-- **apple-bottom**: Built with `MTLMathModeSafe` (Xcode 16+ SDK); its accuracy is documented in its [precision envelope](https://github.com/grantdh/apple-bottom/blob/main/docs/vv/PRECISION_ENVELOPE.md)
+- **QE version**: 7.5 or later (the `.bands` post-processing tool requires 7.5); the build scripts fetch the `develop` commit pinned in `scripts/common.sh`
+- **apple-bottom**: 1.4 or later, built with `MTLMathModeSafe` (Xcode 16+ SDK); its accuracy is documented in its [precision envelope](https://github.com/grantdh/apple-bottom/blob/main/docs/vv/PRECISION_ENVELOPE.md)
 - Do **not** use DYLD_INSERT_LIBRARIES interposition — it has been tested and abandoned due to dispatch overhead. Rebuild QE against apple-bottom as an explicit linker input.
 
 ## Repository Structure
@@ -81,23 +77,26 @@ Benchmark configurations and analysis scripts are in [`benchmarks/qe_yambo/`](be
 ```
 Quantum-Espressivo/
 ├── scripts/
-│   ├── setup-apple-bottom.sh      # Build apple-bottom dependency
-│   ├── build-qe-metal.sh          # Clone, patch, and build QE against apple-bottom
+│   ├── common.sh                  # Pinned versions and paths, shared by the scripts
+│   ├── setup-apple-bottom.sh      # Fetch and build apple-bottom
+│   ├── build-qe-metal.sh          # Fetch QE and build it against apple-bottom
 │   ├── build-qe-accelerate.sh     # Accelerate baseline build
 │   ├── build-qe-openblas.sh       # OpenBLAS baseline build
-│   ├── validate.sh                # Energy agreement validation
+│   ├── validate.sh                # AB_MODE=cpu against AB_MODE=gpu, same pw.x
 │   ├── benchmark-4way.sh          # Quick A/B/C/D comparison
 │   ├── benchmark-overnight.sh     # Full statistical benchmark suite
 │   ├── benchmark-paper.sh         # Repeated-run benchmark campaign
 │   ├── calibrate-omp.sh           # OMP thread tuning
-│   └── rebuild-metal.sh           # Incremental rebuild
+│   ├── rebuild-metal.sh           # Rebuild apple-bottom and relink pw.x
+│   ├── with-ab-profile.sh         # Run a program with apple-bottom's profile, one file per process
+│   └── ab_profile.py              # Add up a run's apple-bottom profiles
 ├── benchmarks/qe_yambo/           # Benchmark configs, inputs, analysis
 ├── benchmarks/si64_scf/           # Si64 SCF benchmark design
-├── tests/                         # Integration test suite
+├── tests/                         # Integration test and validate.sh's input
 ├── docs/                          # Integration notes, design documents, corrections
 ├── split/                         # CPU/GPU GEMM split prototype and its results
 ├── results/                       # Benchmark output (local, gitignored)
-└── deps/                          # Local apple-bottom and QE source (gitignored)
+└── deps/                          # apple-bottom and QE sources and builds (gitignored)
 ```
 
 ## Ecosystem

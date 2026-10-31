@@ -7,11 +7,11 @@ set -uo pipefail
 header() { printf "\n========== %s ==========\n" "$*"; }
 
 header "apple-bottom dylib"
-find "$HOME/Dev/arm/metal-algos" "$HOME/apple-bottom" \
+find "$HOME/Dev/Claude/apple-bottom" "$HOME/apple-bottom" \
      -name "libapplebottom*.dylib" -type f 2>/dev/null | head -10
 
 header "apple-bottom headers"
-find "$HOME/Dev/arm/metal-algos/include" "$HOME/apple-bottom/include" \
+find "$HOME/Dev/Claude/apple-bottom/include" "$HOME/apple-bottom/include" \
      -name "*.h" 2>/dev/null | head -5
 
 header "QE source trees (looking for version 7.5)"

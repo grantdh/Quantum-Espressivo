@@ -6,9 +6,9 @@
 #   2. AUSURF112 (112 atoms, 4 k-pts, 800 bands) — medium, ~30-60 min/run
 #
 # Each system is run with:
-#   - Accelerate (AMX) baseline
-#   - GPU DD-BLAS (all ZGEMM to GPU)
-#   - GPU+AMX hybrid (threshold routing)
+#   - amx:  the Accelerate (AMX) baseline build
+#   - gpu:  the apple-bottom build with AB_MODE=gpu
+#   - auto: the apple-bottom build with AB_MODE=auto
 #
 # Total estimated time: ~6-8 hours
 #
@@ -21,16 +21,14 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESPRESSIVO_ROOT="$(dirname "$SCRIPT_DIR")"
-QE_DIR="$ESPRESSIVO_ROOT/deps/qe-7.5"
+source "$SCRIPT_DIR/common.sh"
 RESULTS_BASE="$ESPRESSIVO_ROOT/results/overnight"
-AB_DIR="$ESPRESSIVO_ROOT/deps/apple-bottom"
 
 # Defaults
 NUM_RUNS=3
 COOLDOWN=180  # 3 min between runs (longer for thermal recovery on big jobs)
 SYSTEMS="si64,ausurf"
-CONFIGS="amx,gpu_all,gpu_amx"
+CONFIGS="amx,gpu,auto"
 MPI_PROCS=0  # 0 = auto-detect per system, 1 = no MPI
 
 # Parse flags
@@ -50,7 +48,7 @@ while [ $# -gt 0 ]; do
         -h|--help)
             echo "Usage: $0 [options]"
             echo "  --systems LIST   Comma-separated: si64,ausurf (default: both)"
-            echo "  --configs LIST   Comma-separated: amx,gpu_all,gpu_amx (default: all)"
+            echo "  --configs LIST   Comma-separated: amx,gpu,auto (default: all)"
             echo "  --runs N         Runs per config per system (default: 3)"
             echo "  --cooldown SECS  Seconds between runs (default: 180)"
             echo "  --mpi N          MPI processes (default: auto per system)"
@@ -81,14 +79,12 @@ fi
 
 # Per-system, per-config MPI process count.
 #
-# Key insight: GPU contention with MPI.
-# Each MPI rank creates its own Metal context + command queue. Multiple ranks
-# competing for the single GPU causes time-slicing overhead and kills perf.
+# Each MPI rank creates its own Metal context and command queue, and all ranks
+# share the one GPU.
 #
-#   amx:      Pure CPU → full MPI (k-point parallelism helps)
-#   gpu_amx:  Hybrid → full MPI (most calls fall below threshold with more ranks,
-#             so they route to AMX anyway; only big GEMMs hit GPU)
-#   gpu_all:  All-GPU → single-process (4 ranks hammering GPU = contention disaster)
+#   amx:   CPU only → full MPI (k-point parallelism helps)
+#   auto:  full MPI, like amx: on an M2 Max auto routes QE's GEMMs to Accelerate
+#   gpu:   single process, so that ranks do not share the GPU
 #
 # Si64 is Γ-only → no k-point parallelism → always single-process.
 get_mpi_prefix() {
@@ -106,12 +102,12 @@ get_mpi_prefix() {
         case "$system" in
             ausurf)
                 case "$config" in
-                    gpu_all)
-                        # All GEMMs to GPU — MPI would cause multi-way GPU contention
+                    gpu)
+                        # All GEMMs to GPU — one process, no ranks sharing the GPU
                         nprocs=1
                         ;;
-                    amx|gpu_amx)
-                        # CPU-bound or hybrid — MPI helps via k-point parallelism
+                    amx|auto)
+                        # GEMMs on Accelerate — MPI helps via k-point parallelism
                         local perf_cores=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || echo 4)
                         if [ "$perf_cores" -ge 8 ]; then
                             nprocs=4  # 4 k-points in AUSURF
@@ -213,7 +209,6 @@ echo "  Results:    $RESULTS_DIR"
 echo "  Hardware:   $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')"
 echo "  MPI:        ${MPIEXEC:-disabled} (auto per-system: AUSURF=4, Si64=1)"
 echo "  OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4} (adjusted per MPI config)"
-echo "  apple-bottom: $(grep VERSION_STRING "$AB_DIR/include/apple_bottom.h" 2>/dev/null | head -1 || echo 'unknown')"
 echo "  Start time: $(date)"
 echo ""
 
@@ -253,9 +248,6 @@ echo ""
 
 # Validate binaries
 echo "=== Binary Validation ==="
-if ! echo "$CONFIGS" | tr ',' '\n' | grep -qE "^(gpu_all|gpu_amx)$" || [ -f "$PW_METAL" ]; then
-    true
-fi
 [ -f "$PW_AMX" ] && echo "  [✓] AMX: $PW_AMX" || echo "  [!] AMX: NOT FOUND"
 [ -f "$PW_METAL" ] && echo "  [✓] Metal: $PW_METAL" || echo "  [!] Metal: NOT FOUND"
 echo ""
@@ -297,8 +289,6 @@ run_one() {
     fi
     local run_omp_threads=$(get_omp_threads "$mpi_nprocs")
 
-    local profile_file="$run_dir/ab_profile.json"
-
     # Log run configuration
     echo "mpi_prefix=$mpi_prefix" > "$run_dir/run_config.txt"
     echo "omp_threads=$run_omp_threads" >> "$run_dir/run_config.txt"
@@ -308,34 +298,27 @@ run_one() {
     # (ausurf.in has no pseudo_dir, so QE uses ESPRESSO_PSEUDO or compiled default)
     local start_time=$(python3 -c "import time; print(time.time())")
 
-    if [ -n "$env_override" ]; then
-        env OMP_NUM_THREADS="$run_omp_threads" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
-            $mpi_prefix "$binary" < "$input_file" > "$run_dir/pw.out" 2>&1 || true
-    else
-        env OMP_NUM_THREADS="$run_omp_threads" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
-            $mpi_prefix "$binary" < "$input_file" > "$run_dir/pw.out" 2>&1 || true
-    fi
+    # with-ab-profile.sh has each rank of an apple-bottom build write its own profile
+    env OMP_NUM_THREADS="$run_omp_threads" \
+        ESPRESSO_PSEUDO="$run_dir" \
+        $env_override \
+        $mpi_prefix "$AB_WITH_PROFILE" "$run_dir/ab_profile" \
+        "$binary" < "$input_file" > "$run_dir/pw.out" 2>&1 || true
 
     local end_time=$(python3 -c "import time; print(time.time())")
     local wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
 
     # Extract results
-    local energy=$(grep '!' "$run_dir/pw.out" | tail -1 | awk '{print $5}')
-    local scf_iter=$(grep 'convergence has been achieved' "$run_dir/pw.out" | awk '{print $6}' | head -1)
+    local energy=$(qe_energy "$run_dir/pw.out")
+    local scf_iter=$(qe_iterations "$run_dir/pw.out")
 
     # Check for errors
     local error_check=$(grep -i "error\|stopping\|crash" "$run_dir/pw.out" | head -3)
 
-    local gpu_calls="0"
-    local total_calls="0"
-    if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-        gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-        local cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-        total_calls=$((gpu_calls + cpu_calls))
+    # GPU routing stats, summed over ranks (NA without apple-bottom or its profile)
+    local gpu_calls=NA cpu_calls=NA gpu_pct=NA ab_build=NA
+    if links_apple_bottom "$binary"; then
+        read -r gpu_calls cpu_calls gpu_pct ab_build <<< "$(ab_summary "$run_dir/ab_profile")"
     fi
 
     # Save per-run data
@@ -346,18 +329,17 @@ run_one() {
         echo "wall_time=$wall"
         echo "total_energy=$energy"
         echo "scf_iterations=$scf_iter"
-        echo "gpu_calls=$gpu_calls"
-        echo "total_calls=$total_calls"
+        ab_kv "$gpu_calls" "$cpu_calls" "$gpu_pct" "$ab_build"
     } > "$run_dir/summary.txt"
 
     # Append to CSV
-    echo "$system,$config,$run_num,$wall,$energy,$scf_iter,$gpu_calls,$total_calls" >> "$RESULTS_DIR/raw_data.csv"
+    echo "$system,$config,$run_num,$wall,$energy,$scf_iter,$gpu_calls,$cpu_calls,$gpu_pct,$ab_build" >> "$RESULTS_DIR/raw_data.csv"
 
     if [ -n "$error_check" ]; then
         echo "  ${system}/${config} #${run_num}: ${wall}s [ERRORS DETECTED]"
         echo "    $error_check"
     else
-        echo "  ${system}/${config} #${run_num}: ${wall}s  E=${energy} Ry  SCF=${scf_iter}  GPU=${gpu_calls}/${total_calls}"
+        echo "  ${system}/${config} #${run_num}: ${wall}s  E=${energy} Ry  SCF=${scf_iter}  GPU calls=${gpu_calls} (CPU ${cpu_calls}, GPU time ${gpu_pct}%)"
     fi
 }
 
@@ -366,7 +348,7 @@ run_one() {
 # =========================================================================
 
 # CSV header
-echo "system,config,run,wall_time_s,energy_ry,scf_iters,gpu_calls,total_calls" > "$RESULTS_DIR/raw_data.csv"
+echo "system,config,run,wall_time_s,energy_ry,scf_iters,gpu_calls,cpu_calls,gpu_time_pct,ab_build" > "$RESULTS_DIR/raw_data.csv"
 
 # Build run schedule: randomized across all (system, config, run) triples
 declare -a SCHEDULE=()
@@ -420,13 +402,13 @@ for entry in "${SCHEDULE[@]}"; do
             binary="$PW_AMX"
             env_override=""
             ;;
-        gpu_all)
+        gpu)
             binary="$PW_METAL"
-            env_override="AB_CROSSOVER_FLOPS=0"
+            env_override="AB_MODE=gpu"
             ;;
-        gpu_amx)
+        auto)
             binary="$PW_METAL"
-            env_override=""
+            env_override="AB_MODE=auto"
             ;;
     esac
 
@@ -470,10 +452,13 @@ results_dir = sys.argv[2]
 
 # Parse
 data = {}
+builds = set()
 with open(csv_file) as f:
     header = f.readline()
     for line in f:
         parts = line.strip().split(',')
+        if len(parts) > 9 and parts[9] != 'NA':
+            builds.add(parts[9])
         if len(parts) < 6:
             continue
         system, config, run, wall, energy, scf = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
@@ -487,16 +472,17 @@ with open(csv_file) as f:
 
 # Generate per-system summaries
 systems = sorted(set(k[0] for k in data.keys()))
-configs_order = ['amx', 'gpu_all', 'gpu_amx']
+configs_order = ['amx', 'gpu', 'auto']
 config_labels = {
     'amx': 'Accelerate (AMX)',
-    'gpu_all': 'GPU DD-BLAS',
-    'gpu_amx': 'GPU+AMX hybrid',
+    'gpu': 'apple-bottom gpu',
+    'auto': 'apple-bottom auto',
 }
 
 lines = []
 lines.append("Espressivo Overnight Benchmark Results")
 lines.append("=" * 70)
+lines.append(f"apple-bottom: {'; '.join(sorted(builds)) or 'NA'}")
 lines.append("")
 
 for system in systems:

@@ -1,26 +1,24 @@
 #!/bin/bash
-# benchmark-4way.sh — 4-way Si64 SCF wall-clock comparison for paper Table X
+# benchmark-4way.sh — 4-way Si64 SCF wall-clock comparison
 #
 # Configurations:
 #   1. OpenBLAS (CPU)   — pure software FP64, no AMX, no GPU
 #   2. Accelerate (AMX) — Apple AMX hardware BLAS
-#   3. GPU+AMX hybrid   — apple-bottom GPU for large ZGEMM, AMX for small
-#   4. GPU-all          — apple-bottom GPU for ALL ZGEMM (threshold=0)
+#   3. auto             — the apple-bottom build with AB_MODE=auto
+#   4. gpu              — the apple-bottom build with AB_MODE=gpu
 #
 # Usage:
 #   ./scripts/benchmark-4way.sh [--input /path/to/si64.in] [--runs N] [--skip-openblas]
 #
 # Output:
-#   results/benchmark_4way/summary.txt       — paper-ready table
-#   results/benchmark_4way/<config>/run_N/    — individual run outputs + profiles
+#   results/benchmark_4way/summary.txt       — summary table
+#   results/benchmark_4way/<config>/run_N/    — individual run outputs + apple-bottom profiles
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESPRESSIVO_ROOT="$(dirname "$SCRIPT_DIR")"
-QE_DIR="$ESPRESSIVO_ROOT/deps/qe-7.5"
+source "$SCRIPT_DIR/common.sh"
 RESULTS_BASE="$ESPRESSIVO_ROOT/results/benchmark_4way"
-AB_DIR="$ESPRESSIVO_ROOT/deps/apple-bottom"
 
 # Defaults
 NUM_RUNS=3
@@ -85,8 +83,8 @@ echo ""
 # Track which configs are available (bash 3.2 compatible)
 RUN_OPENBLAS=false
 RUN_AMX=false
-RUN_GPU_AMX=false
-RUN_GPU_ALL=false
+RUN_AUTO=false
+RUN_GPU=false
 
 if [ "$SKIP_OPENBLAS" = false ] && [ -f "$PW_OPENBLAS" ]; then
     RUN_OPENBLAS=true
@@ -105,17 +103,17 @@ else
 fi
 
 if [ -f "$PW_METAL" ]; then
-    RUN_GPU_AMX=true
-    RUN_GPU_ALL=true
-    echo "  [x] GPU+AMX:   $PW_METAL (AB_CROSSOVER_FLOPS=default)"
-    echo "  [x] GPU-all:   $PW_METAL (AB_CROSSOVER_FLOPS=0)"
+    RUN_AUTO=true
+    RUN_GPU=true
+    echo "  [x] auto:      $PW_METAL (AB_MODE=auto)"
+    echo "  [x] gpu:       $PW_METAL (AB_MODE=gpu)"
 else
-    echo "  [ ] GPU+AMX:   NOT FOUND"
-    echo "  [ ] GPU-all:   NOT FOUND"
+    echo "  [ ] auto:      NOT FOUND"
+    echo "  [ ] gpu:       NOT FOUND"
 fi
 
 HAS_ANY=false
-if $RUN_OPENBLAS || $RUN_AMX || $RUN_GPU_AMX || $RUN_GPU_ALL; then
+if $RUN_OPENBLAS || $RUN_AMX || $RUN_AUTO || $RUN_GPU; then
     HAS_ANY=true
 fi
 
@@ -165,35 +163,25 @@ run_config() {
 
         export OMP_NUM_THREADS=4
 
-        # Profile file for GPU configs (apple-bottom v1.3.x JSON format)
-        local profile_file="$run_dir/ab_profile.json"
-
         echo "    Run $run/$NUM_RUNS..."
         local start_time=$(python3 -c "import time; print(time.time())")
 
-        # Execute with optional env override
-        if [ -n "$env_override" ]; then
-            env AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
-                "$pw_binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
-        else
-            env AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
-                "$pw_binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
-        fi
+        # Execute with optional env override; apple-bottom builds write their profile
+        env $env_override "$AB_WITH_PROFILE" "$run_dir/ab_profile" \
+            "$pw_binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
 
         local end_time=$(python3 -c "import time; print(time.time())")
         local wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
 
         # Extract results
-        local energy=$(grep '!' "$run_dir/pw.out" | tail -1 | awk '{print $5}')
-        local scf_iter=$(grep 'convergence has been achieved' "$run_dir/pw.out" | awk '{print $6}' | head -1)
+        local energy=$(qe_energy "$run_dir/pw.out")
+        local scf_iter=$(qe_iterations "$run_dir/pw.out")
 
-        # GPU routing stats
-        local gpu_calls="N/A"
-        local total_calls="N/A"
-        if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-            gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-            local cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-            total_calls=$((gpu_calls + cpu_calls))
+        # GPU routing stats (NA for builds without apple-bottom, or if the profile is missing)
+        local gpu_calls=NA cpu_calls=NA gpu_pct=NA ab_build=NA
+        if links_apple_bottom "$pw_binary"; then
+            read -r gpu_calls cpu_calls gpu_pct ab_build <<< "$(ab_summary "$run_dir/ab_profile")"
+            [ "$ab_build" = NA ] || AB_BUILD="$ab_build"
         fi
 
         # Accumulate times (space-separated)
@@ -205,7 +193,7 @@ run_config() {
         last_energy="$energy"
         last_scf="$scf_iter"
 
-        echo "      Wall: ${wall}s  Energy: ${energy} Ry  SCF: ${scf_iter}  GPU: ${gpu_calls}/${total_calls}"
+        echo "      Wall: ${wall}s  Energy: ${energy} Ry  SCF: ${scf_iter}  GPU calls: ${gpu_calls} (CPU: ${cpu_calls})  GPU time: ${gpu_pct}%"
 
         # Save per-run summary
         {
@@ -213,8 +201,7 @@ run_config() {
             echo "wall_time=$wall"
             echo "total_energy=$energy"
             echo "scf_iterations=$scf_iter"
-            echo "gpu_calls=$gpu_calls"
-            echo "total_calls=$total_calls"
+            ab_kv "$gpu_calls" "$cpu_calls" "$gpu_pct" "$ab_build"
         } > "$run_dir/summary.txt"
     done
 
@@ -241,7 +228,7 @@ print(f'{mean:.1f} {stdev:.1f} {min(times):.1f} {max(times):.1f}')
         echo "Raw times: ${all_times}"
     } > "$config_dir/stats.txt"
 
-    # Append to raw results for summary table (include min_time for paper)
+    # Append to raw results for summary table (include min_time)
     echo "$config_name $mean_time $stdev_time $min_time $last_energy $last_scf" >> "$RESULTS_BASE/_raw_results.tmp"
 
     echo ""
@@ -249,6 +236,7 @@ print(f'{mean:.1f} {stdev:.1f} {min(times):.1f} {max(times):.1f}')
 
 # Clean temp file
 rm -f "$RESULTS_BASE/_raw_results.tmp"
+AB_BUILD=NA  # set by run_config from the apple-bottom profiles
 
 # =========================================================================
 # Run all configurations
@@ -274,22 +262,22 @@ if [ "$RUN_AMX" = true ]; then
     cooldown
 fi
 
-# 3. GPU+AMX hybrid (default 100M FLOP threshold)
-if [ "$RUN_GPU_AMX" = true ]; then
-    run_config "gpu_amx" "$PW_METAL" ""
+# 3. apple-bottom, calibrated routing
+if [ "$RUN_AUTO" = true ]; then
+    run_config "auto" "$PW_METAL" "AB_MODE=auto"
     cooldown
 fi
 
-# 4. GPU-all (force all ZGEMM to GPU, threshold=0)
-if [ "$RUN_GPU_ALL" = true ]; then
-    run_config "gpu_all" "$PW_METAL" "AB_CROSSOVER_FLOPS=0"
+# 4. apple-bottom, every GEMM above AB_MIN_GPU_DIM on the GPU
+if [ "$RUN_GPU" = true ]; then
+    run_config "gpu" "$PW_METAL" "AB_MODE=gpu"
 fi
 
 # =========================================================================
 # Generate summary table
 # =========================================================================
 echo "============================================"
-echo "SUMMARY TABLE (Paper Table X)"
+echo "SUMMARY TABLE"
 echo "============================================"
 echo ""
 
@@ -302,10 +290,10 @@ SUMMARY_FILE="$RESULTS_BASE/summary.txt"
     echo "Input: $SI64_INPUT"
     echo "Runs per config: $NUM_RUNS"
     echo "OMP_NUM_THREADS: 4"
-    echo "apple-bottom: $(grep VERSION_STRING $AB_DIR/include/apple_bottom.h 2>/dev/null | head -1 || echo 'unknown')"
+    echo "apple-bottom: $AB_BUILD"
     echo "Hardware: $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')"
     echo ""
-    printf "%-16s  %-20s  %-22s  %-8s  %-14s\n" "Configuration" "ZGEMM routing" "Wall time (s)" "SCF" "Total energy"
+    printf "%-16s  %-20s  %-22s  %-8s  %-14s\n" "Configuration" "GEMM routing" "Wall time (s)" "SCF" "Total energy"
     printf "%-16s  %-20s  %-22s  %-8s  %-14s\n" "---------------" "-------------------" "---------------------" "-------" "-------------"
 } | tee "$SUMMARY_FILE"
 
@@ -334,14 +322,14 @@ with open(raw_file) as f:
 labels = {
     'openblas': ('OpenBLAS (CPU)', 'cblas_zgemm (sw)'),
     'amx': ('Accelerate (AMX)', 'cblas_zgemm (AMX)'),
-    'gpu_amx': ('GPU+AMX hybrid', 'ab_zgemm (>100M)'),
-    'gpu_all': ('GPU DD-BLAS', 'ab_zgemm (all)'),
+    'auto': ('apple-bottom auto', 'AB_MODE=auto'),
+    'gpu': ('apple-bottom gpu', 'AB_MODE=gpu'),
 }
 
 lines = []
 
 # Table header
-lines.append(f"{'Configuration':<18}  {'ZGEMM routing':<20}  {'Mean (s)':>10}  {'Stdev':>8}  {'Min (s)':>10}  {'SCF':>4}  {'Total energy'}")
+lines.append(f"{'Configuration':<18}  {'GEMM routing':<20}  {'Mean (s)':>10}  {'Stdev':>8}  {'Min (s)':>10}  {'SCF':>4}  {'Total energy'}")
 lines.append(f"{'-'*17:<18}  {'-'*19:<20}  {'-'*10:>10}  {'-'*8:>8}  {'-'*10:>10}  {'-'*4:>4}  {'-'*20}")
 
 for c in configs:

@@ -65,8 +65,8 @@ Also update the expected energy if QE 7.5 produces a slightly different referenc
 
 ```bash
 ls -la ~/apple-bottom
-# Must point to ~/Dev/arm/metal-algos
-# If not: ln -sf ~/Dev/arm/metal-algos ~/apple-bottom
+# Must point to ~/Dev/Claude/apple-bottom
+# If not: ln -sf ~/Dev/Claude/apple-bottom ~/apple-bottom
 ```
 
 ---
@@ -169,7 +169,7 @@ Replace all `CALL ZGEMM(` with `CALL ab_zgemm(` (expect 12 instances across `ceg
 **In `make.inc`** (autoconf) or **CMakeLists.txt** (cmake):
 ```makefile
 DFLAGS = ... -D__APPLE_BOTTOM__
-BLAS_LIBS = -L~/Dev/arm/metal-algos/build -lapplebottom \
+BLAS_LIBS = -L~/Dev/Claude/apple-bottom/build -lapplebottom \
             -framework Accelerate -framework Metal -framework Foundation -lc++
 ```
 
@@ -294,7 +294,7 @@ endif()
 Build QE 7.5 three ways and verify all produce correct results:
 
 1. **Without Metal:** `cmake .. ` (no `-DQE_ENABLE_METAL`) -- must match clean baseline exactly
-2. **With Metal:** `cmake .. -DQE_ENABLE_METAL=ON -DAPPLE_BOTTOM_ROOT=~/Dev/arm/metal-algos` -- must match baseline to 10+ decimal places
+2. **With Metal:** `cmake .. -DQE_ENABLE_METAL=ON -DAPPLE_BOTTOM_ROOT=~/Dev/Claude/apple-bottom` -- must match baseline to 10+ decimal places
 3. **Autoconf path:** Verify the `make.inc` approach still works for users who don't use CMake
 
 ### 2D. Build the benchmark matrix
@@ -429,21 +429,21 @@ For the merge to succeed, apple-bottom itself needs:
 
 | Resource | Path |
 |----------|------|
-| apple-bottom source | `~/Dev/arm/metal-algos/src/` |
-| Built library | `~/Dev/arm/metal-algos/build/libapplebottom.a` |
-| Fortran bridge | `~/Dev/arm/metal-algos/src/fortran_bridge.c` |
+| apple-bottom source | `~/Dev/Claude/apple-bottom/src/` |
+| Built library | `~/Dev/Claude/apple-bottom/build/libapplebottom.a` |
+| Fortran bridge | `~/Dev/Claude/apple-bottom/src/fortran_bridge.c` |
 | QE 7.5 source | `~/Dev/QE-7_5/q-e-qe-7.5/` (to be downloaded) |
 | QE 7.4.1 reference | `~/qe-test/q-e-qe-7.4.1/` |
 | Si64 benchmark | `~/qe-test/benchmark/si64.in` |
-| Integration test | `~/Dev/arm/metal-algos/tests/test_qe_integration.sh` |
-| V&V report | `~/Dev/arm/metal-algos/docs/vv/VV_REPORT.md` |
+| Integration test | `~/Dev/Claude/apple-bottom/tests/test_qe_integration.sh` |
+| V&V report | `~/Dev/Claude/apple-bottom/docs/vv/VV_REPORT.md` |
 | Existing merge plan | See project documentation |
 
 ## Quick Reference: Validation Commands
 
 ```bash
 # apple-bottom unit tests (must pass before any QE work)
-cd ~/Dev/arm/metal-algos && make clean && make test
+cd ~/Dev/Claude/apple-bottom && make clean && make test
 
 # QE integration check (update QE_DIR first)
 QE_DIR=~/Dev/QE-7_5/q-e-qe-7.5 ./tests/test_qe_integration.sh
