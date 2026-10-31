@@ -6,18 +6,22 @@ Quantum-Espressivo builds [Quantum ESPRESSO](https://www.quantum-espresso.org/) 
 
 ## Status (October 2026)
 
-On an M2 Max, linking apple-bottom gives QE the same answers but no speedup:
+On an M2 Max, splitting each of QE's large GEMMs between the GPU and Accelerate, which compute their parts at the same time, makes `pw.x` 1.21–1.25× faster than on Accelerate alone, with the same printed energies, SCF iterations and band energies. The split is a prototype, measured on two 64-atom silicon inputs at the best CPU-only layout (8 ranks × 1 thread) with apple-bottom 1.5.0's library: see [split/README.md](split/README.md).
+
+Without the split, linking apple-bottom gives QE the same answers but no speedup:
 
 - The total energy and band energies are the same with QE's GEMMs on the CPU (`AB_MODE=cpu`) and on the GPU (`AB_MODE=gpu`).
 - The default, `AB_MODE=auto`, keeps all of QE's GEMMs on Accelerate, which is faster for QE's matrix shapes on this machine. Forcing them onto the GPU is not faster.
 
-These are apple-bottom's measurements, on QE develop with a 64-atom silicon cell: see [VAL-1](https://github.com/grantdh/apple-bottom/blob/main/tests/validation/VAL001_QE_Si64.md), and "What to expect on an M2 Max" in its [integration guide](https://github.com/grantdh/apple-bottom/blob/main/docs/INTEGRATION.md#quantum-espresso-integration), which links the data.
+Those two results are apple-bottom's measurements, on QE develop with a 64-atom silicon cell: see [VAL-1](https://github.com/grantdh/apple-bottom/blob/main/tests/validation/VAL001_QE_Si64.md), and "What to expect on an M2 Max" in its [integration guide](https://github.com/grantdh/apple-bottom/blob/main/docs/INTEGRATION.md#quantum-espresso-integration), which links the data.
 
 [Earlier versions of this README](https://github.com/grantdh/Quantum-Espressivo/blob/94209083c364e222950e208fc750c91e08ef9c8b/README.md) reported a 22% speedup with "11 decimal places" of energy agreement. That result is withdrawn, together with the April 2026 draft paper that was in `docs/`: see [docs/CORRECTIONS.md](docs/CORRECTIONS.md).
 
 ## How It Works
 
 QE does its dense linear algebra through the standard BLAS calls `zgemm_` and `dgemm_`. When QE is linked against apple-bottom (`-lapplebottom` ahead of the system BLAS), those calls go to apple-bottom, which sends each one to the GPU or to Accelerate according to `AB_MODE` (`cpu`, `auto` or `gpu`) and a calibrated routing table. QE's source does not need to change; see apple-bottom's [integration guide](https://github.com/grantdh/apple-bottom/blob/main/docs/INTEGRATION.md#quantum-espresso-integration).
+
+The split works at the same interface. `split/qe_split.c`, linked into `pw.x` ahead of the BLAS libraries, defines `zgemm_` and `dgemm_` itself and runs part of each large ZGEMM on the GPU through apple-bottom while Accelerate computes the rest, at GPU shares calibrated in QE runs: see [split/README.md](split/README.md#the-shim).
 
 ## Building
 
@@ -91,6 +95,7 @@ Quantum-Espressivo/
 ├── benchmarks/si64_scf/           # Si64 SCF benchmark design
 ├── tests/                         # Integration test suite
 ├── docs/                          # Integration notes, design documents, corrections
+├── split/                         # CPU/GPU GEMM split prototype and its results
 ├── results/                       # Benchmark output (local, gitignored)
 └── deps/                          # Local apple-bottom and QE source (gitignored)
 ```
