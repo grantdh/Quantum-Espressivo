@@ -1,5 +1,7 @@
 # Quantum ESPRESSO Merge Strategy
 
+> **Status (October 2026).** This April 2026 strategy is kept for the record. Its Si64 validation result is withdrawn (the apple-bottom runs never used the GPU), and its integration and precision details predate apple-bottom 1.4.0: see [CORRECTIONS.md](CORRECTIONS.md).
+
 This document lays out a realistic path to getting apple-bottom merged into Quantum ESPRESSO as a Metal GPU backend. It's based on how the CUDA backend actually got merged (spoiler: it took years and went through a separate repo first) and the current state of QE's contribution process.
 
 ## How the CUDA Backend Got Merged — And What That Means For Us
@@ -14,7 +16,7 @@ Key takeaway: **the QE team accepted NVIDIA GPU support because it was already p
 
 **Strengths:**
 - Working library with 48/48 tests
-- Production validation on real science (QE Si64 DFT, 11-digit energy match)
+- ~~Production validation on real science (QE Si64 DFT, 11-digit energy match)~~ (withdrawn)
 - NASA-STD-7009A V&V documentation (nobody else in this space has this)
 - Minimal integration footprint (15 lines changed across 2 QE files)
 - MIT license (compatible with QE's GPL)
@@ -152,6 +154,8 @@ Before submitting, apple-bottom needs to handle these cases that QE actually exe
 
 ## The Email Template
 
+> **Before using this template:** its validation results are withdrawn, and its precision and integration paragraphs predate apple-bottom 1.4.0; update them first.
+
 ```
 Subject: Proposal: Metal GPU backend for Apple Silicon
 
@@ -162,10 +166,8 @@ Apple Silicon GPUs via double-float arithmetic on Metal compute shaders.
 I'd like to discuss whether this could be useful as a Metal backend
 for Quantum ESPRESSO.
 
-Validation results (QE 7.4.1, pw.x, Si64, PBE, 50 Ry, M2 Max):
-  - Energy: -2990.44276157 Ry (matches 6-thread OpenBLAS to 11 digits)
-  - Wall time: 2m01s vs 2m28s (22% faster)
-  - CPU usage: 340% vs 530% (47% reduction)
+Validation results:
+  - [current measurements]
 
 The integration modifies 15 lines in cegterg.f90 (EXTERNAL declaration
 + CALL substitutions). A Fortran bridge auto-routes small calls to CPU

@@ -5,6 +5,8 @@
 **Scope:** QE 7.5 hot path (Davidson diagonalizer + h_psi + s_psi)
 **Goal:** Eliminate per-call FP64↔DD conversion in the Fortran bridge by holding DD-format Metal buffers across Davidson iterations and SCF cycles.
 
+> **Status (October 2026).** The call counts and timings here come from April 2026 runs with apple-bottom 1.3, which never set up the GPU inside QE (see [CORRECTIONS.md](CORRECTIONS.md)). Its "GPU-routed" calls therefore ran on the CPU, and its speedup figures are estimates that were never measured.
+
 ---
 
 ## 1. Executive Summary
@@ -175,7 +177,7 @@ The registry is hit a handful of times per SCF (once at `enter data create`, onc
 
 ### 5.5 DD layout decision
 
-Keep DD-expanded (2× memory) layout on the device for everything that participates in a GPU ZGEMM. `evc` in DD is 2× size but still tiny (e.g. si216: 500 × 7500 × 16 B × 2 ≈ 120 MB). Memory is plentiful on M2 Max (96 GB unified); we're not memory-bound here.
+Keep DD-expanded (2× memory) layout on the device for everything that participates in a GPU ZGEMM. `evc` in DD is 2× size but still tiny (e.g. si216: 500 × 7500 × 16 B × 2 ≈ 120 MB). Memory is plentiful on M2 Max (64 GB unified); we're not memory-bound here.
 
 On `update host` we collapse DD → FP64 during the download. On `update device` we expand FP64 → DD during the upload. Today's bridge already does this per call; the new bridge does it per *lifetime boundary*, which for Davidson matrices is once per Davidson entry, not once per ZGEMM.
 

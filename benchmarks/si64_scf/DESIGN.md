@@ -1,6 +1,9 @@
 # Si64 SCF Benchmark — Design
 
-**Status:** design, pending review before implementation.
+**Status:** design, pending review before implementation (April 2026). In
+October 2026 the paper it served was withdrawn before submission, and the
+VAL-001 figures it cites were withdrawn; see
+[`docs/CORRECTIONS.md`](../../docs/CORRECTIONS.md).
 **Location:** `Espressivo/benchmarks/si64_scf/` (canonical). An earlier draft
 under `apple-bottom/benchmarks/si64_scf/DESIGN.md` is the source material for
 this document and is deleted once this file lands (repo-boundary per
@@ -34,9 +37,10 @@ introduces a second degree of freedom beyond BLAS-dispatch choice.
 
 **Configuration rationale — OMP=4, np=2.** This is the production-representative
 configuration Espressivo's integration targets. It matches the `VAL-001`
-validation row in `docs/QE75_INTEGRATION.md` (22% wall speedup, 11-decimal
-energy agreement), matches `scripts/benchmark-4way.sh` and every other script
-in the repo, and matches the GaN EPW regression baseline. An earlier draft
+validation row in `docs/QE75_INTEGRATION.md` (~~22% wall speedup, 11-decimal
+energy agreement~~, since withdrawn), matches `scripts/benchmark-4way.sh` and
+every other script in the repo, and matches the GaN EPW regression baseline.
+An earlier draft
 of this document specified OMP=1, np=1 on the rationale that single-confound
 isolation would provide the cleanest BLAS-layer comparison. That draft was
 revised to OMP=4, np=2 after auditing the Espressivo repository's actual
@@ -514,7 +518,7 @@ Footer fields:
 - QE 7.5 vs QE 7.4.1 VAL-001 reference drift: Δ = median(E_C) − (−2990.44276157).
 - Dispatcher overhead: (t̃_B − t̃_A) / t̃_A with bootstrap CI.
 - Gate results: 1-7 pass/fail.
-- Hardware: M2 Max, 96 GB, macOS build. apple-bottom commit: …
+- Hardware: M2 Max, 64 GB, macOS build. apple-bottom commit: …
 - Bootstrap seed used for CIs.
 
 ### §8.2 Table Y — per-BLAS breakdown (config C)

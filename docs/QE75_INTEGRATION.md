@@ -3,7 +3,9 @@
 **Author:** Grant Heileman
 **Date:** April 3, 2026
 **apple-bottom version:** 1.3.0-dev (metal-algos @ main, 90 commits)
-**Baseline:** QE 7.4.1 validated (Si64, 11-decimal energy match, 1.22x speedup)
+**Baseline:** ~~QE 7.4.1 validated (Si64, 11-decimal energy match, 1.22x speedup)~~ withdrawn
+
+> **Status (October 2026).** This April 2026 plan is kept for the record. Its VAL-001 result is withdrawn (the apple-bottom runs never used the GPU), and its apple-bottom figures predate 1.4.0: see [CORRECTIONS.md](CORRECTIONS.md).
 
 ---
 
@@ -26,15 +28,15 @@ The existing integration touches only 2 files (cegterg.f90 + make.inc, 15 lines 
 - **Known limitations:** beta != 0 falls back to CPU; rectangular matrices with aspect ratio > 10:1 have correctness issues (fix in progress on `fix/rectangular-gemm` branch)
 - **Uncommitted work:** CHANGELOG, Makefile, README, header version bump to 1.3.0-dev, plus new files (docs/COMPARISON.md, python/, scripts/)
 
-### QE 7.4.1 Validation Results (VAL-001)
+### QE 7.4.1 Validation Results (VAL-001, withdrawn)
 
 | Metric | Accelerate (CPU) | apple-bottom (GPU) |
 |--------|-------------------|---------------------|
-| Wall time | 2m28s | 2m01s (1.22x faster) |
-| CPU usage | 600% (6 threads) | 320% (47% reduction) |
+| Wall time | 2m28s | ~~2m01s (1.22x faster)~~ |
+| CPU usage | 600% (6 threads) | ~~320% (47% reduction)~~ |
 | Total energy | -2990.44276157 Ry | -2990.44276157 Ry |
 | SCF iterations | 14 | 14 |
-| ZGEMM calls | 931 total | 791 GPU / 140 CPU |
+| ZGEMM calls | 931 total | ~~791 GPU / 140 CPU~~ |
 
 ---
 
@@ -205,7 +207,7 @@ cat ab_profile.log | awk '{print $6}' | sort | uniq -c  # GPU vs CPU routing
 |-------|-------------|
 | Energy match | Agree with baseline to >= 10 decimal places |
 | SCF convergence | Same iteration count as baseline |
-| Wall time | Faster than baseline (expect 1.1-1.3x) |
+| Wall time | Faster than baseline (~~expect 1.1-1.3x~~) |
 | No crashes | Clean exit, no segfaults |
 | Profile log | Shows GPU routing for large ZGEMM calls |
 
@@ -336,7 +338,7 @@ Draft subject: "Proposal: Metal GPU backend for Apple Silicon via double-float B
 
 Key points to cover:
 - What: DD arithmetic achieves FP64-class precision on Apple GPU (no native FP64)
-- Results: 1.22x speedup on Si64, 11-decimal energy agreement, 47% CPU reduction
+- Results: ~~1.22x speedup on Si64, 11-decimal energy agreement, 47% CPU reduction~~ (withdrawn)
 - Approach: Follows `__CUDA` precedent with `__METAL` guards, minimal footprint (1 file + CMake module)
 - Library: MIT licensed, NASA-STD-7009A V&V documentation, 48/48 tests passing
 - Ask: Does this align with QE GPU strategy? Which routines beyond cegterg would benefit most?

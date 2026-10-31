@@ -365,7 +365,7 @@ Three classes of edits to QE hot-path files under `__METAL`:
 #endif
 ```
 
-The existing `ab_zgemm` rename (from the HPEC draft) maps 1:1 to `AB_ZGEMM` — the preprocessor expansion differs per backend. Maintenance cost: unchanged.
+The existing `ab_zgemm` rename (the `cegterg.f90` patch in `scripts/build-qe-metal.sh`) maps 1:1 to `AB_ZGEMM` — the preprocessor expansion differs per backend. Maintenance cost: unchanged.
 
 **(b) Fortran array handling under `host_data use_device`.** On `__METAL` we can't use `host_data` because gfortran's OpenACC emits no-ops. Replace each such region with explicit buffer-handle retrieval:
 
