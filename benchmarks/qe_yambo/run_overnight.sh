@@ -52,6 +52,16 @@ exec > >(tee -a "${LOG}") 2>&1
 
 banner() { echo ""; echo "${C_BLD}========== $1 ==========${C_RST}"; }
 fail()   { echo "${C_RED}[stage failure]${C_RST} $*" | tee -a "${OVN}/FAILURES.txt"; }
+host_desc() {
+    local chip p e mem gpu
+    chip=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')
+    p=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo '?')
+    e=$(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null || echo '?')
+    mem=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
+    # Only ioreg reports the GPU core count; read to the end so ioreg never sees SIGPIPE.
+    gpu=$(ioreg -rc AGXAccelerator -d1 2>/dev/null | awk -F'= ' '/"gpu-core-count"/{n=$2} END{print n}') || gpu=''
+    echo "${chip} (${p} P-cores + ${e} E-cores, ${gpu:-?}-core GPU, ${mem} GB), macOS $(sw_vers -productVersion 2>/dev/null || echo '?')"
+}
 
 echo "[$(ts)] overnight start  -> ${OVN}"
 echo "[$(ts)] threshold=${THRESHOLD}  systems='${SYSTEMS}'  timeout/point=${TIMEOUT_PER_POINT}s"
@@ -117,7 +127,7 @@ banner "Writing REPORT.md"
 {
     echo "# Overnight QE benchmark — ${STAMP}"
     echo ""
-    echo "- Host: M2 Max (8 P-cores + 4 E-cores, 30/38-core GPU, 400 GB/s, 96 GB)"
+    echo "- Host: $(host_desc)"
     echo "- pw.x: \`${PW_BIN}\`"
     echo "- libapplebottom: \`${AB_LIB}\`"
     echo "- AB_CROSSOVER_FLOPS: ${THRESHOLD}"
