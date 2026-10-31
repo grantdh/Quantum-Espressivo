@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # bench_qe_sweep.sh — runtime-threshold sweep for AB_MODE=auto.
 #
-# Two knobs to sweep (both now wired as env vars after the Apr 2026 patch):
-#   AB_CROSSOVER_FLOPS   — the FLOP threshold in fortran_bridge.c (this is the
-#                          knob that actually controls QE's dispatch split).
-#   AB_MIN_GPU_DIM       — the dim floor in blas_wrapper.c (gates the secondary
-#                          check inside ab_*_blas once dispatched).
+# Two knobs to sweep (apple-bottom 1.4 and later):
+#   AB_CROSSOVER_FLOPS   — in auto mode, a FLOP threshold that replaces the
+#                          calibrated dispatch table: calls with at least this
+#                          many FLOPs go to the GPU.
+#   AB_MIN_GPU_DIM       — calls with M, N or K at or below it stay on the CPU,
+#                          in every mode (default 32).
 #
 # PRE-FLIGHT CHECK (learned the hard way on 2026-04-14): before running the
 # sweep, verify that varying the env var actually produces different dispatch
-# counts in the profile. If it doesn't, the binary wasn't rebuilt after wiring
-# the knob — abort early instead of wasting 25 minutes collecting identical data.
+# counts in the profile. If it doesn't, the knob does nothing for this input
+# — abort early instead of wasting 25 minutes collecting identical data.
 #
 # Output: results/qe_<sys>/auto_<knob>_<value>/summary.txt
 #
@@ -107,9 +108,9 @@ run_value() {
         env -i HOME="$HOME" PATH="$PATH" \
             OMP_NUM_THREADS="${OMP}" \
             AB_MODE=auto "${KNOB}=${val}" \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${NP}" "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${NP}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
 
@@ -121,6 +122,9 @@ run_value() {
     etot="$(grep '^! *total energy' "${out}/scf.out" 2>/dev/null | tail -1 | awk '{print $(NF-1)}')"
     [[ -z "${etot}" ]] && etot="NA"
 
+    local gpu_calls cpu_calls gpct build
+    read -r gpu_calls cpu_calls gpct build <<< "$(ab_summary "${out}/ab_profile")"
+
     {
         echo "system=${SYSTEM}"
         echo "mode=${label}"
@@ -130,22 +134,13 @@ run_value() {
         echo "wall_seconds=${wall}"
         echo "total_energy_Ry=${etot}"
         echo "converged=${conv}"
+        ab_kv "${gpu_calls}" "${cpu_calls}" "${gpct}" "${build}"
         echo "timestamp=$(ts)"
     } > "${out}/summary.txt"
     echo "${wall}" > "${out}/wall_seconds.txt"
 
-    if [[ -f "${out}/gemm_profile.txt" ]]; then
-        awk 'NR>1 { g[$6]++; f[$6]+=$5 }
-             END { for (k in g) printf "%s calls=%d total_MNK=%.2e\n",
-                   (k==1?"gpu":"cpu"), g[k], f[k] }' \
-            "${out}/gemm_profile.txt" > "${out}/gemm_summary.txt" || true
-    fi
-
-    local cpu_calls gpu_calls
-    cpu_calls=$(grep '^cpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    gpu_calls=$(grep '^gpu calls' "${out}/gemm_summary.txt" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || echo 0)
-    printf "    %-18s  wall=%4ds  cpu_calls=%-5s  gpu_calls=%-5s  E=%-16s  [%s]\n" \
-        "${KNOB}=${val}" "${wall}" "${cpu_calls:-0}" "${gpu_calls:-0}" "${etot}" "${status}"
+    printf "    %-18s  wall=%4ds  cpu_calls=%-5s  gpu_calls=%-5s  gpu_time=%s%%  E=%-16s  [%s]\n" \
+        "${KNOB}=${val}" "${wall}" "${cpu_calls}" "${gpu_calls}" "${gpct}" "${etot}" "${status}"
 }
 
 # --- DYNAMIC PRE-FLIGHT: first run of the sweep establishes a baseline.
@@ -160,9 +155,10 @@ for v in ${VALUES}; do
     if [[ ${i} -eq 2 ]]; then
         last_dir=$(ls -dt "${OUT_ROOT}"/auto_*_* 2>/dev/null | head -1)
         prev_dir=$(ls -dt "${OUT_ROOT}"/auto_*_* 2>/dev/null | sed -n 2p)
-        c1=$(cat "${last_dir}/gemm_summary.txt" 2>/dev/null | sort)
-        c2=$(cat "${prev_dir}/gemm_summary.txt" 2>/dev/null | sort)
-        if [[ -n "${c1}" ]] && [[ "${c1}" == "${c2}" ]]; then
+        c1=$(grep -E '^(gpu|cpu)_calls=' "${last_dir}/summary.txt" 2>/dev/null || true)
+        c2=$(grep -E '^(gpu|cpu)_calls=' "${prev_dir}/summary.txt" 2>/dev/null || true)
+        # Counts of NA mean a run left no profile: nothing to compare.
+        if [[ -n "${c1}" && "${c1}" != *NA* && "${c1}" == "${c2}" ]]; then
             echo ""
             echo "${C_RED}[abort]${C_RST} dispatch counts identical between first two values —"
             echo "        ${KNOB} is not changing behavior. Aborting sweep."
@@ -182,10 +178,9 @@ for m in cpu gpu auto; do
     [[ -f "${s}" ]] || continue
     w=$(grep ^wall_seconds= "${s}" | cut -d= -f2)
     e=$(grep ^total_energy_Ry= "${s}" | cut -d= -f2)
-    gs="${OUT_ROOT}/${m}/gemm_summary.txt"
-    cc=$(grep '^cpu calls' "${gs}" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || true)
-    gc=$(grep '^gpu calls' "${gs}" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || true)
-    printf "  %-28s %-8s %-10s %-10s %-16s\n" "baseline:${m}" "${w}" "${cc:-0}" "${gc:-0}" "${e}"
+    cc=$(grep ^cpu_calls= "${s}" | cut -d= -f2 || true)
+    gc=$(grep ^gpu_calls= "${s}" | cut -d= -f2 || true)
+    printf "  %-28s %-8s %-10s %-10s %-16s\n" "baseline:${m}" "${w}" "${cc:-NA}" "${gc:-NA}" "${e}"
 done
 for v in ${VALUES}; do
     label="auto_$(echo "${KNOB}" | sed 's/^AB_//' | tr 'A-Z' 'a-z')_${v}"
@@ -193,8 +188,7 @@ for v in ${VALUES}; do
     [[ -f "${s}" ]] || continue
     w=$(grep ^wall_seconds= "${s}" | cut -d= -f2)
     e=$(grep ^total_energy_Ry= "${s}" | cut -d= -f2)
-    gs="${OUT_ROOT}/${label}/gemm_summary.txt"
-    cc=$(grep '^cpu calls' "${gs}" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || true)
-    gc=$(grep '^gpu calls' "${gs}" 2>/dev/null | awk '{print $2}' | sed 's/calls=//' || true)
-    printf "  %-28s %-8s %-10s %-10s %-16s\n" "${KNOB}=${v}" "${w}" "${cc:-0}" "${gc:-0}" "${e}"
+    cc=$(grep ^cpu_calls= "${s}" | cut -d= -f2 || true)
+    gc=$(grep ^gpu_calls= "${s}" | cut -d= -f2 || true)
+    printf "  %-28s %-8s %-10s %-10s %-16s\n" "${KNOB}=${v}" "${w}" "${cc:-NA}" "${gc:-NA}" "${e}"
 done

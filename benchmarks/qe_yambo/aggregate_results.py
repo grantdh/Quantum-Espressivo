@@ -24,6 +24,20 @@ def read_int(p: Path) -> int | None:
         return None
 
 
+def summary_calls(mode_dir: Path, key: str) -> int | str:
+    """Sum KEY (gpu_calls or cpu_calls) over the run's summary files (QE: summary.txt; Yambo:
+    summary_<stage>.txt); empty if a run recorded none or NA."""
+    total = 0
+    files = sorted(mode_dir.glob("summary*.txt"))
+    for f in files:
+        values = [line.split("=", 1)[1].strip() for line in f.read_text().splitlines()
+                  if line.startswith(key + "=")]
+        if not values or not values[0].isdigit():
+            return ""
+        total += int(values[0])
+    return total if files else ""
+
+
 def collect():
     rows = []
     if not ROOT.exists():
@@ -38,29 +52,13 @@ def collect():
             if not mode_dir.is_dir():
                 continue
             wall = read_int(mode_dir / "wall_seconds.txt")
-            # GEMM dispatch counts
-            cpu_calls = gpu_calls = 0
-            for f in mode_dir.glob("gemm_profile*.txt"):
-                try:
-                    with f.open() as fh:
-                        next(fh, None)  # header
-                        for line in fh:
-                            parts = line.split()
-                            if len(parts) >= 6:
-                                (cpu_calls, gpu_calls) = (
-                                    (cpu_calls + 1, gpu_calls)
-                                    if parts[5] == "0"
-                                    else (cpu_calls, gpu_calls + 1)
-                                )
-                except Exception:
-                    pass
             rows.append(
                 dict(
                     run=name,
                     mode=mode,
                     wall_s=wall if wall is not None else "",
-                    cpu_calls=cpu_calls,
-                    gpu_calls=gpu_calls,
+                    cpu_calls=summary_calls(mode_dir, "cpu_calls"),
+                    gpu_calls=summary_calls(mode_dir, "gpu_calls"),
                 )
             )
     return rows

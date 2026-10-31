@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# bench_precision.sh — NP-invariance of total energy (the paper's precision claim).
+# bench_precision.sh — spread of the total energy across parallel layouts.
 #
 # Runs the same SCF across multiple parallelism configs in BOTH modes:
-#   AB_MODE=auto (apple-bottom DD path)
-#   AB_MODE=cpu  (Accelerate ZGEMM under apple-bottom's dispatcher)
+#   AB_MODE=auto with AB_CROSSOVER_FLOPS=1e8 (GEMMs of at least 1e8 FLOPs in
+#                double-float arithmetic on the GPU, the rest on Accelerate)
+#   AB_MODE=cpu  (every GEMM in FP64 on Accelerate)
 #
-# The claim: apple-bottom's DD emulation produces smaller (ideally zero)
-# total-energy drift across NP than Accelerate's FP32-accumulator path.
-#
-# For each mode we compute the max pairwise |delta_E| across NP configs.
-# Ratio = delta_E_cpu / delta_E_auto. If > ~10×, the precision claim is
-# strongly supported. If ~1×, the claim is weak and we need a different
-# angle for the paper.
+# For each mode we compute the max pairwise |delta_E| across NP configs, and
+# the ratio delta_E_cpu / delta_E_auto.
 #
 # Configs tested (si216 by default — largest system has largest accumulation):
 #   NP=1 OMP=1 (plain)
@@ -19,7 +15,7 @@
 #   NP=4 OMP=1 -ndiag 1
 #   NP=8 OMP=1 -ndiag 1
 #
-# Output: results/paper_precision/precision.csv + printed summary table
+# Output: results/precision/precision.csv + printed summary table
 # Runtime: ~3-4h on si216, ~15 min on si64.
 #
 # Usage:
@@ -45,10 +41,10 @@ otool -L "${PW_BIN}" 2>/dev/null | grep -qE "applebottom|libab" || {
     echo "${C_RED}ERROR${C_RST}: pw.x not linked against libapplebottom.dylib"; exit 1
 }
 
-OUT_ROOT="${HERE}/results/paper_precision"
+OUT_ROOT="${HERE}/results/precision"
 mkdir -p "${OUT_ROOT}"
 CSV="${OUT_ROOT}/precision.csv"
-[[ -f "${CSV}" ]] || echo "system,np,omp,mode,extra_flags,wall_s,total_E_Ry,status" > "${CSV}"
+[[ -f "${CSV}" ]] || echo "system,np,omp,mode,extra_flags,wall_s,total_E_Ry,status,gpu_calls,gpu_time_pct" > "${CSV}"
 
 # Configs: label | np | omp | extra flags (space-separated)
 CONFIGS=(
@@ -79,9 +75,9 @@ run_point() {
             OMP_NUM_THREADS="${omp}" \
             AB_MODE="${mode}" \
             AB_CROSSOVER_FLOPS=100000000 \
-            AB_PROFILE_FILE="${out}/gemm_profile.txt" \
             ${TO:+${TO} ${TIMEOUT}} \
-            mpirun -np "${np}" "${PW_BIN}" ${extra_flags[@]+"${extra_flags[@]}"} -inp scf.in > scf.out 2>scf.err
+            mpirun -np "${np}" "${AB_WITH_PROFILE}" "${out}/ab_profile" \
+            "${PW_BIN}" ${extra_flags[@]+"${extra_flags[@]}"} -inp scf.in > scf.out 2>scf.err
     ) || rc=$?
     end=$(date +%s); wall=$((end - start))
 
@@ -93,15 +89,19 @@ run_point() {
     etot="$(grep '^! *total energy' "${out}/scf.out" 2>/dev/null | tail -1 | awk '{print $(NF-1)}')"
     [[ -z "${etot}" ]] && etot="NA"
 
-    printf "    wall=%5ds  E=%-20s  [%s]\n" "${wall}" "${etot}" "${status}"
+    local gc cc gpct build
+    read -r gc cc gpct build <<< "$(ab_summary "${out}/ab_profile")"
+
+    printf "    wall=%5ds  E=%-20s  gpu_calls=%-6s gpu_time=%s%%  [%s]\n" \
+        "${wall}" "${etot}" "${gc}" "${gpct}" "${status}"
     local flags_csv=""
     if [[ ${#extra_flags[@]} -gt 0 ]]; then
         flags_csv="$(IFS=' '; echo "${extra_flags[*]}")"
     fi
-    echo "${SYSTEM},${np},${omp},${mode},${flags_csv},${wall},${etot},${status}" >> "${CSV}"
+    echo "${SYSTEM},${np},${omp},${mode},${flags_csv},${wall},${etot},${status},${gc},${gpct}" >> "${CSV}"
 }
 
-echo "[$(ts)] Precision validation on ${SYSTEM}"
+echo "[$(ts)] Total-energy spread across layouts on ${SYSTEM}"
 echo "[$(ts)] CSV: ${CSV}"
 echo ""
 
@@ -163,16 +163,10 @@ print(f"  max |delta_E| across NP in AB_MODE=cpu:  {cpu_span:.2e} Ry")
 if auto_span > 0:
     ratio = cpu_span / auto_span
     print(f"  ratio (cpu / auto): {ratio:.2f}×")
-    if ratio >= 10:
-        print(f"  >>> STRONG precision claim: apple-bottom ~{ratio:.0f}× more NP-stable than Accelerate")
-    elif ratio >= 3:
-        print(f"  >>> MODEST precision claim: apple-bottom ~{ratio:.1f}× more NP-stable")
-    else:
-        print(f"  >>> WEAK precision claim: apple-bottom's NP-stability edge is < 3×")
 elif cpu_span > 0:
-    print(f"  >>> IDEAL precision claim: auto is bit-identical across NP; cpu drifts {cpu_span:.2e} Ry")
+    print(f"  auto: the same total energy at every layout, as printed; cpu spans {cpu_span:.2e} Ry")
 else:
-    print(f"  >>> Both modes bit-identical — precision claim cannot be distinguished at QE's display precision")
+    print(f"  both modes: the same total energy at every layout, as printed")
 PY
 
 echo ""
