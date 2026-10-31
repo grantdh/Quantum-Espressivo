@@ -19,8 +19,9 @@ compared with (the best CPU layout). Only runs that ended with rc 0 on AC power 
   AB_TRACE (trace.<pid>) on the GPU part's sequence number (the rule follows apple-bottom's
   benchmarks/split/classify_trace.py). A trace's staged field, when the library writes one, says
   whether the staged result stood (kept, kept_4m) or why the call went to the host path. Without it
-  (apple-bottom 1.5.0), a call with path=gpu, alpha = 1 and beta 0 or 1 was staged if it had no host
-  epilogue and took the host path if it had one; any other scalars leave it unclassified.
+  (apple-bottom before 1.5.0, e.g. 415cb5d), a call with path=gpu, alpha = 1 and beta 0 or 1 was
+  staged if it had no host epilogue and took the host path if it had one; any other scalars leave it
+  unclassified.
   path=fallback:<reason> means Accelerate computed it.
 --gate: every input's CONFIG runs against the reference's first run; fails if a run is missing or
 its final energy differs by more than 1e-5 Ry or its SCF iteration count by more than 2.
