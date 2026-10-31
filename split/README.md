@@ -116,7 +116,7 @@ split shape against one cblas call: with `AB_MODE=cpu` for the split's arithmeti
   - 4 × 2 blocks: the same splits and Accelerate, plus Accelerate at 8 × 1.
   - Medians with ranges over the rounds.
 - **Conditions.** AC power is checked inside the lock before and after every run. `pmset` and the load
-  are recorded with every run, and the power every 20 s during each block.
+  are recorded with every run, and the power source every 20 s during each block.
 
 ## Results
 
@@ -237,8 +237,8 @@ split.
 
 ### Conditions
 
-- Every run started and ended on AC power, and all 410 power samples taken during the blocks read AC.
-  `pmset` reported no thermal or performance warning at the start or end of any run.
+- Every run started and ended on AC power, and all 410 power-source samples taken during the blocks
+  read AC. `pmset` reported no thermal or performance warning at the start or end of any run.
 - Each block's lock was taken once the 1-minute load average was below 5.
 - Only the split runs wrote apple-bottom's `AB_TRACE` and the shim's per-call log.
 
@@ -267,9 +267,9 @@ split.
 - **Libraries.**
   - 415cb5d reports "1.4.0 (415cb5d4d888)".
   - 1.5.0's library was built from 8ebe73c, an unpublished commit whose `src/` and `include/` are those
-    of 935e74d, PR #16's last commit. v1.5.0's `src/` is the same, and its header differs only in the
-    version macros and comments, so the build reports "1.4.0 (8ebe73ccf822-dirty)"; "dirty" is an
-    edited results README in its build tree.
+    of 935e74d, PR #16's last commit to change the library. v1.5.0's `src/` is the same, and its header
+    differs only in the version macros and comments, so the build reports "1.4.0 (8ebe73ccf822-dirty)";
+    "dirty" is an edited results README in its build tree.
 - **Inputs.** A and B from apple-bottom's `benchmarks/qe/inputs/` at 2ea4077 (the same at v1.5.0), with
   `ecutwfc` 25 Ry and pslibrary 1.0.0's Si PAW pseudopotentials: `Si.pbe-nl-kjpaw_psl.1.0.0.UPF` for A,
   `Si.pbe-n-kjpaw_psl.1.0.0.UPF` for B.
