@@ -273,7 +273,7 @@ for entry in "${SCHEDULE[@]}"; do
     done
 
     # Capture pre-run thermal state (macOS)
-    # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
+    # TODO: re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     start_time=$(python3 -c "import time; print(time.time())")
 
@@ -288,7 +288,7 @@ for entry in "${SCHEDULE[@]}"; do
     wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
 
     # Capture post-run thermal state
-    # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
+    # TODO: re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     # Extract results
     energy=$(qe_energy "$run_dir/pw.out")

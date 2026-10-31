@@ -5,10 +5,10 @@
 ESPRESSIVO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NPROCS=$(sysctl -n hw.logicalcpu)
 
-# apple-bottom v1.4.0. setup-apple-bottom.sh fetches it into deps/apple-bottom; point
+# apple-bottom v1.5.0. setup-apple-bottom.sh fetches it into deps/apple-bottom; point
 # APPLE_BOTTOM_DIR at another built checkout to use that one instead.
 APPLE_BOTTOM_URL="${APPLE_BOTTOM_URL:-https://github.com/grantdh/apple-bottom.git}"
-APPLE_BOTTOM_COMMIT="${APPLE_BOTTOM_COMMIT:-01765e1fc8e9b55ab2818976686ee9461b92b571}"
+APPLE_BOTTOM_COMMIT="${APPLE_BOTTOM_COMMIT:-4530fd691b6d9428f1ecb7e44797619a807349fa}"
 APPLE_BOTTOM_DIR="${APPLE_BOTTOM_DIR:-$ESPRESSIVO_ROOT/deps/apple-bottom}"
 
 # Quantum ESPRESSO develop of 2026-10-30 (it reports version 8.0dev). build-qe-metal.sh,

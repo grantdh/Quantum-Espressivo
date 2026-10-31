@@ -21,7 +21,7 @@ QE does its dense linear algebra through the standard BLAS calls `zgemm_` and `d
 
 ## Building
 
-The scripts fetch apple-bottom 1.4.0 and one commit of QE's `develop` branch (`b6615c50`, 2026-10-30, which reports version 8.0dev), so that a build can be repeated. [`scripts/common.sh`](scripts/common.sh) holds these pins; `APPLE_BOTTOM_COMMIT` or `QE_COMMIT` in the environment overrides them. Each QE build records what it was made from in `PROVENANCE.txt`, next to its `bin/`.
+The scripts fetch apple-bottom 1.5.0 and one commit of QE's `develop` branch (`b6615c50`, 2026-10-30, which reports version 8.0dev), so that a build can be repeated. [`scripts/common.sh`](scripts/common.sh) holds these pins; `APPLE_BOTTOM_COMMIT` or `QE_COMMIT` in the environment overrides them. Each QE build records what it was made from in `PROVENANCE.txt`, next to its `bin/`.
 
 ### Prerequisites
 
