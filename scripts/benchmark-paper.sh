@@ -1,5 +1,8 @@
 #!/bin/bash
-# benchmark-paper.sh — Publication-quality 4-way Si64 benchmark
+# benchmark-paper.sh — Repeated-run 4-way Si64 benchmark
+#
+# Configurations: openblas and amx (the OpenBLAS and Accelerate builds), and auto and gpu
+# (the apple-bottom build with AB_MODE=auto and with AB_MODE=gpu).
 #
 # Improvements over benchmark-4way.sh:
 #   - 5 runs per config (configurable with --runs)
@@ -8,21 +11,19 @@
 #   - Thermal monitoring (powermetrics integration when available)
 #   - Reports min, median, mean, stdev, and max
 #   - Saves raw data as CSV for analysis
-#   - Paper-ready LaTeX table fragment
+#   - LaTeX table fragment
 #
 # Usage:
 #   ./scripts/benchmark-paper.sh                          # full 4-way, 5 runs each
 #   ./scripts/benchmark-paper.sh --runs 7 --cooldown 180  # 7 runs, 3min cooldown
 #   ./scripts/benchmark-paper.sh --skip-openblas           # skip slow OpenBLAS config
-#   ./scripts/benchmark-paper.sh --configs amx,gpu_all     # specific configs only
+#   ./scripts/benchmark-paper.sh --configs amx,gpu         # specific configs only
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESPRESSIVO_ROOT="$(dirname "$SCRIPT_DIR")"
-QE_DIR="$ESPRESSIVO_ROOT/deps/qe-7.5"
-RESULTS_BASE="$ESPRESSIVO_ROOT/results/paper_benchmark"
-AB_DIR="$ESPRESSIVO_ROOT/deps/apple-bottom"
+source "$SCRIPT_DIR/common.sh"
+RESULTS_BASE="$ESPRESSIVO_ROOT/results/repeated_benchmark"
 
 # Defaults
 NUM_RUNS=5
@@ -53,7 +54,7 @@ while [ $# -gt 0 ]; do
             echo "  --runs N           Runs per config (default: 5)"
             echo "  --cooldown SECS    Cooldown between runs (default: 120)"
             echo "  --skip-openblas    Skip OpenBLAS config"
-            echo "  --configs LIST     Comma-separated: amx,gpu_all,gpu_amx,openblas"
+            echo "  --configs LIST     Comma-separated: amx,gpu,auto,openblas"
             echo "  --mpi N            Number of MPI processes (default: auto-detect)"
             echo "  --no-mpi           Disable MPI (run single-process)"
             exit 0 ;;
@@ -172,11 +173,11 @@ fi
 if [ -f "$PW_AMX" ] && should_run "amx"; then
     add_config "amx" "$PW_AMX" "" "Accelerate (AMX)" "cblas\_zgemm (AMX)"
 fi
-if [ -f "$PW_METAL" ] && should_run "gpu_amx"; then
-    add_config "gpu_amx" "$PW_METAL" "" "GPU+AMX hybrid" "ab\_zgemm (>10^8)"
+if [ -f "$PW_METAL" ] && should_run "auto"; then
+    add_config "auto" "$PW_METAL" "AB_MODE=auto" "apple-bottom auto" "AB\_MODE=auto"
 fi
-if [ -f "$PW_METAL" ] && should_run "gpu_all"; then
-    add_config "gpu_all" "$PW_METAL" "AB_CROSSOVER_FLOPS=0" "GPU DD-BLAS" "ab\_zgemm (all)"
+if [ -f "$PW_METAL" ] && should_run "gpu"; then
+    add_config "gpu" "$PW_METAL" "AB_MODE=gpu" "apple-bottom gpu" "AB\_MODE=gpu"
 fi
 
 NCONFIGS=${#CONFIG_NAMES[@]}
@@ -188,7 +189,7 @@ fi
 TOTAL_RUNS=$((NCONFIGS * NUM_RUNS))
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Espressivo: Publication-Quality Si64 Benchmark                  ║"
+echo "║  Espressivo: Repeated-Run Si64 Benchmark                         ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
 echo "  Input:      $SI64_INPUT"
@@ -201,7 +202,6 @@ echo ""
 echo "  Hardware:   $(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo 'Apple Silicon')"
 echo "  MPI procs:  $MPI_PROCS${MPI_PREFIX:+ ($MPIEXEC)}"
 echo "  OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}"
-echo "  apple-bottom: $(grep VERSION_STRING "$AB_DIR/include/apple_bottom.h" 2>/dev/null | head -1 || echo 'unknown')"
 echo ""
 
 # Create results directory with timestamp
@@ -211,7 +211,7 @@ mkdir -p "$RESULTS_DIR"
 
 # CSV file for raw data
 CSV_FILE="$RESULTS_DIR/raw_data.csv"
-echo "run_order,config,run_number,wall_time_s,energy_ry,scf_iters,gpu_calls,total_calls" > "$CSV_FILE"
+echo "run_order,config,run_number,wall_time_s,energy_ry,scf_iters,gpu_calls,cpu_calls,gpu_time_pct,ab_build" > "$CSV_FILE"
 
 # =========================================================================
 # Build randomized run schedule
@@ -272,24 +272,17 @@ for entry in "${SCHEDULE[@]}"; do
         done
     done
 
-    profile_file="$run_dir/ab_profile.json"
-
     # Capture pre-run thermal state (macOS)
     # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     start_time=$(python3 -c "import time; print(time.time())")
 
-    if [ -n "$env_override" ]; then
-        env OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" $env_override \
-            $MPI_PREFIX "$binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
-    else
-        env OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            AB_PROFILE=1 AB_PROFILE_JSON="$profile_file" \
-            $MPI_PREFIX "$binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
-    fi
+    # with-ab-profile.sh has each rank of an apple-bottom build write its own profile
+    env OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" \
+        ESPRESSO_PSEUDO="$run_dir" \
+        $env_override \
+        $MPI_PREFIX "$AB_WITH_PROFILE" "$run_dir/ab_profile" \
+        "$binary" < "$SI64_INPUT" > "$run_dir/pw.out" 2>&1 || true
 
     end_time=$(python3 -c "import time; print(time.time())")
     wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
@@ -298,21 +291,19 @@ for entry in "${SCHEDULE[@]}"; do
     # TODO(v1.4.0): re-add thermal telemetry via `powermetrics -n 1 -i 1000 --samplers smc,cpu_power,gpu_power`
 
     # Extract results
-    energy=$(grep '!' "$run_dir/pw.out" | tail -1 | awk '{print $5}')
-    scf_iter=$(grep 'convergence has been achieved' "$run_dir/pw.out" | awk '{print $6}' | head -1)
+    energy=$(qe_energy "$run_dir/pw.out")
+    scf_iter=$(qe_iterations "$run_dir/pw.out")
 
-    gpu_calls="0"
-    total_calls="0"
-    if [ -f "$profile_file" ] && [ -s "$profile_file" ]; then
-        gpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['gpu_dispatch_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-        cpu_calls=$(python3 -c "import json; d=json.load(open('$profile_file')); print(sum(r['amx_fallback_count'] for r in d['routines']))" 2>/dev/null || echo 0)
-        total_calls=$((gpu_calls + cpu_calls))
+    # GPU routing stats, summed over ranks (NA without apple-bottom or its profile)
+    gpu_calls=NA cpu_calls=NA gpu_pct=NA ab_build=NA
+    if links_apple_bottom "$binary"; then
+        read -r gpu_calls cpu_calls gpu_pct ab_build <<< "$(ab_summary "$run_dir/ab_profile")"
     fi
 
-    echo "  Config: $config  Run: $ri  Wall: ${wall}s  Energy: ${energy} Ry  SCF: ${scf_iter}"
+    echo "  Config: $config  Run: $ri  Wall: ${wall}s  Energy: ${energy} Ry  SCF: ${scf_iter}  GPU calls: ${gpu_calls}  GPU time: ${gpu_pct}%"
 
     # Append to CSV
-    echo "$run_counter,$config,$ri,$wall,$energy,$scf_iter,$gpu_calls,$total_calls" >> "$CSV_FILE"
+    echo "$run_counter,$config,$ri,$wall,$energy,$scf_iter,$gpu_calls,$cpu_calls,$gpu_pct,$ab_build" >> "$CSV_FILE"
 
     # Cooldown (skip after last run)
     if [ "$run_counter" -lt "$TOTAL_RUNS" ]; then
@@ -343,10 +334,13 @@ latex_file = sys.argv[3]
 
 # Parse CSV
 configs = {}
+builds = set()
 with open(csv_file) as f:
     header = f.readline()
     for line in f:
         parts = line.strip().split(',')
+        if parts[9] != 'NA':
+            builds.add(parts[9])
         config = parts[1]
         wall = float(parts[3])
         energy = parts[4]
@@ -356,12 +350,12 @@ with open(csv_file) as f:
         configs[config]['times'].append(wall)
 
 # Order
-order = ['openblas', 'amx', 'gpu_amx', 'gpu_all']
+order = ['openblas', 'amx', 'auto', 'gpu']
 labels = {
     'openblas': ('OpenBLAS (CPU)', 'cblas_zgemm (sw)'),
     'amx': ('Accelerate (AMX)', 'cblas_zgemm (AMX)'),
-    'gpu_amx': ('GPU+AMX hybrid', 'ab_zgemm (>10^8)'),
-    'gpu_all': ('GPU DD-BLAS', 'ab_zgemm (all)'),
+    'auto': ('apple-bottom auto', 'AB_MODE=auto'),
+    'gpu': ('apple-bottom gpu', 'AB_MODE=gpu'),
 }
 
 # Compute statistics
@@ -388,8 +382,9 @@ amx_median = stats.get('amx', {}).get('median', None)
 
 # Print summary
 lines = []
-lines.append("Espressivo Publication-Quality Benchmark Results")
+lines.append("Espressivo Repeated-Run Benchmark Results")
 lines.append("=" * 70)
+lines.append(f"apple-bottom: {'; '.join(sorted(builds)) or 'NA'}")
 lines.append("")
 
 lines.append(f"{'Config':<18}  {'N':>3}  {'Min (s)':>8}  {'Median':>8}  {'Mean':>8}  {'Stdev':>7}  {'Max':>8}  {'Energy'}")
@@ -444,7 +439,7 @@ for name in order:
 lines.append("")
 energies = set(s['energy'] for s in stats.values())
 if len(energies) == 1:
-    lines.append("ENERGY: ALL CONFIGURATIONS MATCH (bit-identical)")
+    lines.append("ENERGY: ALL CONFIGURATIONS MATCH (as printed)")
 else:
     lines.append("ENERGY: VALUES DIFFER:")
     for name in order:
@@ -513,5 +508,3 @@ echo "  Results:  $RESULTS_DIR/"
 echo "  Summary:  $RESULTS_DIR/summary.txt"
 echo "  Raw CSV:  $RESULTS_DIR/raw_data.csv"
 echo "  LaTeX:    $RESULTS_DIR/table.tex"
-echo ""
-echo "  To re-analyze: python3 scripts/analyze_paper_benchmark.py $RESULTS_DIR/raw_data.csv"

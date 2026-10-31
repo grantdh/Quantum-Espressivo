@@ -15,22 +15,22 @@
 #   ./scripts/calibrate-omp.sh                    # sweep 1..P-cores for Si64
 #   ./scripts/calibrate-omp.sh --max-threads 12   # include E-cores in sweep
 #   ./scripts/calibrate-omp.sh --system ausurf    # calibrate AUSURF instead
-#   ./scripts/calibrate-omp.sh --configs amx,gpu_amx  # specific configs only
+#   ./scripts/calibrate-omp.sh --configs amx,auto     # specific configs only
 #   ./scripts/calibrate-omp.sh --mpi 4            # calibrate with MPI
 #   ./scripts/calibrate-omp.sh --cooldown 60      # shorter cooldown
+#
+# Configs: amx (the Accelerate build), and the apple-bottom build with AB_MODE=auto or gpu.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ESPRESSIVO_ROOT="$(dirname "$SCRIPT_DIR")"
-QE_DIR="$ESPRESSIVO_ROOT/deps/qe-7.5"
-AB_DIR="$ESPRESSIVO_ROOT/deps/apple-bottom"
+source "$SCRIPT_DIR/common.sh"
 
 # Defaults
 MAX_THREADS=0  # 0 = auto (P-cores only)
 COOLDOWN=90
 SYSTEM="si64"
-CONFIGS="amx,gpu_amx"
+CONFIGS="amx,auto"
 MPI_PROCS=1
 REPS=2  # runs per (config, thread_count) pair
 
@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
             echo "  --max-threads N   Max OMP threads to test (default: P-core count)"
             echo "  --cooldown SECS   Cooldown between runs (default: 90)"
             echo "  --system NAME     si64 or ausurf (default: si64)"
-            echo "  --configs LIST    Configs to test (default: amx,gpu_amx)"
+            echo "  --configs LIST    Configs to test: amx, auto, gpu (default: amx,auto)"
             echo "  --mpi N           MPI processes (default: 1)"
             echo "  --reps N          Repetitions per point (default: 2)"
             exit 0 ;;
@@ -186,8 +186,8 @@ for entry in "${SCHEDULE[@]}"; do
     # Select binary and env
     case "$config" in
         amx)     binary="$PW_AMX"; env_override="" ;;
-        gpu_all) binary="$PW_METAL"; env_override="AB_CROSSOVER_FLOPS=0" ;;
-        gpu_amx) binary="$PW_METAL"; env_override="" ;;
+        gpu)     binary="$PW_METAL"; env_override="AB_MODE=gpu" ;;
+        auto)    binary="$PW_METAL"; env_override="AB_MODE=auto" ;;
         *)       echo "  SKIP: unknown config $config"; continue ;;
     esac
 
@@ -211,22 +211,16 @@ for entry in "${SCHEDULE[@]}"; do
 
     start_time=$(python3 -c "import time; print(time.time())")
 
-    if [ -n "$env_override" ]; then
-        env OMP_NUM_THREADS="$threads" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            $env_override \
-            $MPI_PREFIX "$binary" < "$INPUT" > "$run_dir/pw.out" 2>&1 || true
-    else
-        env OMP_NUM_THREADS="$threads" \
-            ESPRESSO_PSEUDO="$run_dir" \
-            $MPI_PREFIX "$binary" < "$INPUT" > "$run_dir/pw.out" 2>&1 || true
-    fi
+    env OMP_NUM_THREADS="$threads" \
+        ESPRESSO_PSEUDO="$run_dir" \
+        $env_override \
+        $MPI_PREFIX "$binary" < "$INPUT" > "$run_dir/pw.out" 2>&1 || true
 
     end_time=$(python3 -c "import time; print(time.time())")
     wall=$(python3 -c "print(f'{$end_time - $start_time:.1f}')")
 
-    energy=$(grep '!' "$run_dir/pw.out" | tail -1 | awk '{print $5}')
-    scf_iter=$(grep 'convergence has been achieved' "$run_dir/pw.out" | awk '{print $6}' | head -1)
+    energy=$(qe_energy "$run_dir/pw.out")
+    scf_iter=$(qe_iterations "$run_dir/pw.out")
 
     echo "  $config | OMP=$threads | rep=$rep | ${wall}s | E=$energy"
     echo "$config,$threads,$MPI_PROCS,$rep,$wall,$energy,$scf_iter" >> "$CSV"
