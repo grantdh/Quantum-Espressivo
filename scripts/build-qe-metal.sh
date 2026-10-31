@@ -23,9 +23,8 @@ echo "============================================"
 echo "Espressivo: building QE with apple-bottom"
 echo "============================================"
 
-if [ ! -f "$APPLE_BOTTOM_DIR/build/libapplebottom.dylib" ]; then
-    "$SCRIPT_DIR/setup-apple-bottom.sh"
-fi
+# Builds apple-bottom unless it is built; either way it warns if it is not at the pin.
+"$SCRIPT_DIR/setup-apple-bottom.sh"
 fetch_commit "$QE_DIR" "$QE_URL" "$QE_COMMIT"
 echo "apple-bottom: $APPLE_BOTTOM_DIR"
 echo "QE:           $QE_DIR"

@@ -12,13 +12,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+# An existing checkout is used as it is, with a warning if it is not at the pinned commit.
+fetch_commit "$APPLE_BOTTOM_DIR" "$APPLE_BOTTOM_URL" "$APPLE_BOTTOM_COMMIT"
+
 if [ -f "$APPLE_BOTTOM_DIR/build/libapplebottom.dylib" ]; then
     echo "apple-bottom is already built in $APPLE_BOTTOM_DIR ($(git_desc "$APPLE_BOTTOM_DIR"))."
     echo "Remove $APPLE_BOTTOM_DIR/build to rebuild it."
     exit 0
 fi
-
-fetch_commit "$APPLE_BOTTOM_DIR" "$APPLE_BOTTOM_URL" "$APPLE_BOTTOM_COMMIT"
 
 echo "Building apple-bottom and running its tests..."
 build_apple_bottom
